@@ -9,7 +9,8 @@ def setup_custom_logger(name):
 
     # Create file handler which logs even debug messages
     file_handler = logging.FileHandler(name + '.log')
-    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.WARNING)
 
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
