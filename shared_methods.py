@@ -22,25 +22,24 @@ def add_exif_data(file_path, exif_tag, exif_data, logger):
         logger.error(f"Error adding {exif_tag} EXIF data to \"{file_path}\": {e}")
         return False
 
-# Helper function to get the EXIF data from the file
+
 def get_exif_data(file_path, exif_tag, logger):
     try:
-        # Define the command to run exiftool and parse with awk
-        cmd = f"exiftool -{exif_tag} \"{file_path}\"" + " | awk -F': ' 'BEGIN {OFS=\":\"} {for (i=2; i<=NF; i++) printf \"%s%s\", $i, (i==NF ? \"\\n\" : OFS)}'"
-        # Execute the command
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
-        # Check if the command was successful
-        if result.returncode == 0 and result.stdout.strip():
-            exif_date = result.stdout.strip()
-            if not  DATETIME.match(exif_date):
-                return None
-            
-            return exif_date
-        elif result.returncode == 1 or result.stderr.strip():
-            logger.error(f"Error getting {exif_tag} EXIF data from \"{file_path}\": {result.stderr.strip()}")
-            return None
+        cmd = ['exiftool', f'-{exif_tag}', file_path]
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        if result.returncode == 0:
+            # Assuming the output is "Tag Name: Value"
+            output = result.stdout.strip()
+            # Split the output into lines and then extract the value after the colon
+            value = None
+            for line in output.split('\n'):
+                parts = line.split(': ', 1)  # Split on the first colon only
+                if len(parts) == 2:
+                    _, value = parts
+            return value.strip()
         else:
-            return None
+            raise Exception(f"Error reading EXIF data: {result.stderr}")
     except Exception as e:
         logger.error(f"Error getting {exif_tag} EXIF data from \"{file_path}\": {e}")
         return None

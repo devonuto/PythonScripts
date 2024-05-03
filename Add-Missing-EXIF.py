@@ -61,22 +61,14 @@ def process_images(start_directory):
                         try:
                             if add_exif_data(file_path, 'DateTimeOriginal', file_name):
                                 logger.info(f"Updated DateTimeOriginal from \"{exif_date}\" to \"{file_name}\" on \"{file_path}\".")
-                                record_db_update(DATABASE_NAME, DATABASE_TABLE, [DATABASE_PRIMARY, DATABASE_COLUMN2,DATABASE_COLUMN3], [file_path, 'DateTimeOriginal', file_name], logger)
+                                record_db_update(DATABASE_NAME, DATABASE_TABLE, [DATABASE_PRIMARY, DATABASE_COLUMN2, DATABASE_COLUMN3], [file_path, 'DateTimeOriginal', file_name], logger)
 
                         # Catch exceptions and log them
                         except Exception as e:
                             logger.error(f"Error updating DateTimeOriginal EXIF data for \"{file_path}\": {e}")
                     else:
                         logger.info(f"\"{file_path}\" already has correct EXIF data.")
-
-# Record the file update in the database
-# def record_file_update(file_path, exif_tag, exif_data):    
-#     conn = sqlite3.connect(DATABASE_NAME)
-#     c = conn.cursor()
-#     c.execute('INSERT INTO file_updates (file_path, exif_tag, exif_data) VALUES (?, ?, ?)',
-#               (file_path, exif_tag, exif_data))
-#     conn.commit()
-#     conn.close()
+                        record_db_update(DATABASE_NAME, DATABASE_TABLE, [DATABASE_PRIMARY, DATABASE_COLUMN2, DATABASE_COLUMN3], [file_path, 'DateTimeOriginal', file_name], logger)
 
 # Command line interaction
 if len(sys.argv) > 1:
