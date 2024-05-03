@@ -7,11 +7,9 @@ from datetime import datetime
 from logger_config import setup_custom_logger
 logger = setup_custom_logger('Add-Missing-EXIF')
 
-DATETIME = re.compile(r'^(\d{4}-\d{2}-\d{2} \d{2}\.\d{2}\.\d{2}(\.\d{3})?)', re.IGNORECASE)
+DATETIME = re.compile(r'^\d{4}[\-\:\.]\d{2}[\-\:\.]\d{2}\s\d{2}[\-\:\.]\d{2}[\-\:\.]\d{2}([\-\:\.]\d{3})?', re.IGNORECASE)
 PHOTO_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif'}
 VIDEO_EXTENSIONS = {'.m4v', '.mov', '.mp4', '.avi', '.mkv', '.wmv', '.flv', '.webm'}
-
-start_directory = "D:\\My Photos" # Default start directory
 
 def add_exif_data(file_path, exif_tag, exif_data):
     # Define the command to run exiftool and parse with awk
@@ -19,8 +17,7 @@ def add_exif_data(file_path, exif_tag, exif_data):
     # Execute the command
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
     # Check if the command was successful
-    if result.returncode == 0:
-        logger.info(f"Added \"{exif_data}\" to \"{exif_tag}\" on \"{file_path}\".")
+    if result.returncode == 0:        
         return True
     else:
         # Handle errors (e.g., file not found, exiftool error)
@@ -28,36 +25,36 @@ def add_exif_data(file_path, exif_tag, exif_data):
         return False
 
 def get_exif_data(file_path, exif_tag):
-    logger.info(f"Checking \"{exif_tag}\" on \"{file_path}\".")
     # Define the command to run exiftool and parse with awk
-    cmd = f'exiftool -{exif_tag} "{file_path}" | awk -F: "' + '{for (i=2; i<=NF; i++) printf $i (i==NF ? \\"\\\\n\\" : \\":\\") }"'
+    cmd = f"exiftool -{exif_tag} \"{file_path}\"" + " | awk -F': ' 'BEGIN {OFS=\":\"} {for (i=2; i<=NF; i++) printf \"%s%s\", $i, (i==NF ? \"\\n\" : OFS)}'"
     # Execute the command
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
     # Check if the command was successful
     if result.returncode == 0 and result.stdout.strip():
-        return result.stdout.strip()
+        exif_date = result.stdout.strip()
+        if not  DATETIME.match(exif_date):
+            return None
+        
+        return exif_date
     elif result.returncode == 1 or result.stderr.strip():
         logger.error(result.stderr.strip())
     else:
         return None
 
-# Determine if the first date is more recent than the second date
+# Helper function to sanitize and extract the date part only
+def get_date_object(date_str):
+    # Define the date-only format
+    date_format = '%Y-%m-%d'
+    # Split the string to extract the date part only
+    date_part = date_str.split(' ')[0]
+    # Sanitize the date part to ensure it uses '-' as the separator
+    sanitized_date_part = date_part.replace(':', '-').replace('.', '-')
+    logger.debug(f"Date string: {date_str} Date part: {date_part}, Sanitized Date part: {sanitized_date_part}")
+    # Parse the date part
+    return datetime.strptime(sanitized_date_part, date_format)
+
+# Compare two date strings and return True if the first date is more recent than the second date
 def is_first_date_more_recent(date_str1, date_str2):
-    # Define the datetime formats
-    base_date_format = '%Y.%m.%d %H.%M.%S'
-    micro_date_format = '%Y.%m.%d %H.%M.%S.%f'
-
-    # Helper function to sanitize and parse the date string
-    def get_date_object(date_str):
-        # Sanitize the date string to ensure it uses '.' as the separator for the date
-        sanitized_date_str = date_str.replace(':', '.').replace('-', '.')
-        try:
-            # Try parsing without microseconds
-            return datetime.strptime(sanitized_date_str, base_date_format)            
-        except ValueError:
-            # Fall back to parsing with microseconds
-            return datetime.strptime(sanitized_date_str, micro_date_format)
-
     # Convert strings to datetime objects using the determined format
     date1 = get_date_object(date_str1)
     date2 = get_date_object(date_str2)
@@ -74,7 +71,7 @@ def process_images(start_directory):
             file_name, file_extension = os.path.splitext(file)
             if file_extension.lower() in PHOTO_EXTENSIONS:
                 # Check if the file has a DATETIME in the filename
-                match = DATETIME.search(file)
+                match = DATETIME.match(file)
                 if match:
                     # Get the date and time from the file's EXIF data
                     exif_date = get_exif_data(file_path, 'DateTimeOriginal')
@@ -82,7 +79,10 @@ def process_images(start_directory):
                     # if not exif_date or exif_date is more recent than date_time in filename, update exif data with date_time
                     if not exif_date or is_first_date_more_recent(exif_date, file_name):
                         # Add the date and time to the file's EXIF data from filename
-                        add_exif_data(file_path, 'DateTimeOriginal', file_name)                            
+                        if add_exif_data(file_path, 'DateTimeOriginal', file_name):
+                            logger.info(f"Updated DateTimeOriginal from \"{exif_date}\" to \"{file_name}\" on \"{file_path}\".")
+                    else:
+                        logger.info(f"\"{file_path}\" already has correct EXIF data.")
 
 # Command line interaction
 if len(sys.argv) > 1:

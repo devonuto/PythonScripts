@@ -81,7 +81,7 @@ def process_files(start_directory):
 
 def get_exif_data(file_path, exif_tag):
     # Define the command to run exiftool and parse with awk
-    cmd = f'exiftool -{exif_tag} "{file_path}" | awk -F: "' + '{for (i=2; i<=NF; i++) printf $i (i==NF ? \\"\\\\n\\" : \\":\\") }"'
+    cmd = f"exiftool -{exif_tag} \"{file_path}\"" + " | awk -F': ' 'BEGIN {OFS=\":\"} {for (i=2; i<=NF; i++) printf \"%s%s\", $i, (i==NF ? \"\\n\" : OFS)}'"
     # Execute the command
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
     # Check if the command was successful
