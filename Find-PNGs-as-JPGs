@@ -10,7 +10,9 @@ PHOTO_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif'}
 DATABASE_NAME = 'mislabled_images.db'
 DATABASE_TABLE = 'file_updates'
 DATABASE_PRIMARY = 'file_path'
-DATABASE_COLUMN = 'new_file_path'
+DATABASE_COLUMN2 = 'extension'
+DATABASE_COLUMN3 = 'file_type'
+DATABASE_COLUMN4 = 'new_file_path'
 
 # Check if the file has already been processed.
 
@@ -20,7 +22,7 @@ def process_images(start_directory):
     for root, dirs, files in os.walk(start_directory):
         for file in files:
             file_path = os.path.join(root, file)
-            if has_been_processed(DATABASE_NAME, DATABASE_TABLE, [DATABASE_PRIMARY, DATABASE_COLUMN], file_path, logger):
+            if has_been_processed(DATABASE_NAME, DATABASE_TABLE, [DATABASE_PRIMARY, DATABASE_COLUMN4], file_path, logger):
                 logger.info(f"\"{file_path}\" has already been processed.")
                 continue
             
@@ -44,12 +46,12 @@ if len(sys.argv) > 1:
 if not os.path.isdir(start_directory):
     logger.error(f"\"{start_directory}\" is not a valid directory.")
     sys.exit(1)
-setup_database(DATABASE_NAME, '''
-        CREATE TABLE IF NOT EXISTS file_updates (
-            file_path TEXT PRIMARY KEY,
-            extension TEXT,
-            file_type TEXT,
-            new_file_path TEXT
+setup_database(DATABASE_NAME, f'''
+        CREATE TABLE IF NOT EXISTS {DATABASE_TABLE} (
+            {DATABASE_PRIMARY} TEXT PRIMARY KEY,
+            {DATABASE_COLUMN2} TEXT,
+            {DATABASE_COLUMN3} TEXT,
+            {DATABASE_COLUMN4} TEXT
         )
-    ''')
+    ''', logger)
 process_images(start_directory)

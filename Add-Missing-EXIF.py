@@ -14,7 +14,8 @@ VIDEO_EXTENSIONS = {'.m4v', '.mov', '.mp4', '.avi', '.mkv', '.wmv', '.flv', '.we
 DATABASE_NAME = 'exif_updates.db'
 DATABASE_TABLE = 'file_updates'
 DATABASE_PRIMARY = 'file_path'
-DATABASE_COLUMNS = ['file_path', 'exif_tag', 'exif_data']
+DATABASE_COLUMN2 = 'exif_tag'
+DATABASE_COLUMN3 = 'exif_data'
 
 # Helper function to sanitize and extract the date part only
 def get_date_object(date_str):
@@ -43,30 +44,24 @@ def process_images(start_directory):
     for root, dirs, files in os.walk(start_directory):
         for file in files:
             file_path = os.path.join(root, file)
-
-            if has_been_processed(DATABASE_NAME, DATABASE_TABLE, DATABASE_PRIMARY, file_path, logger):
-                logger.info(f"\"{file_path}\" has already been processed.")
-                continue
-
             file_name, file_extension = os.path.splitext(file)
             if file_extension.lower() in PHOTO_EXTENSIONS:
+                if has_been_processed(DATABASE_NAME, DATABASE_TABLE, DATABASE_PRIMARY, file_path, logger):
+                    logger.info(f"\"{file_path}\" has already been processed.")
+                    continue
+
                 # Check if the file has a DATETIME in the filename
                 match = DATETIME.match(file)
                 if match:
                     # Get the date and time from the file's EXIF data
-                    exif_date = None
-                    try:
-                        exif_date = get_exif_data(file_path, 'DateTimeOriginal', logger)
-                    except Exception as e:
-                        logger.error(f"Error getting EXIF data for \"{file_path}\": {e}")
-
+                    exif_date = get_exif_data(file_path, 'DateTimeOriginal', logger)
                     # if not exif_date or exif_date is more recent than date_time in filename, update exif data with date_time
                     if not exif_date or is_first_date_more_recent(exif_date, file_name):
                         # Add the date and time to the file's EXIF data from filename
                         try:
                             if add_exif_data(file_path, 'DateTimeOriginal', file_name):
                                 logger.info(f"Updated DateTimeOriginal from \"{exif_date}\" to \"{file_name}\" on \"{file_path}\".")
-                                record_db_update(DATABASE_NAME, DATABASE_TABLE, DATABASE_COLUMNS, [file_path, 'DateTimeOriginal', file_name], logger)
+                                record_db_update(DATABASE_NAME, DATABASE_TABLE, [DATABASE_PRIMARY, DATABASE_COLUMN2,DATABASE_COLUMN3], [file_path, 'DateTimeOriginal', file_name], logger)
 
                         # Catch exceptions and log them
                         except Exception as e:
@@ -89,12 +84,13 @@ if len(sys.argv) > 1:
 if not os.path.isdir(start_directory):
     logger.error(f"\"{start_directory}\" is not a valid directory.")
     sys.exit(1)
-setup_database(DATABASE_NAME, '''
-        CREATE TABLE IF NOT EXISTS file_updates (
-            file_path TEXT PRIMARY KEY,
-            exif_tag TEXT,
-            exif_data TEXT
+setup_database(DATABASE_NAME, 
+    f'''
+        CREATE TABLE IF NOT EXISTS {DATABASE_TABLE} (
+            {DATABASE_PRIMARY} TEXT PRIMARY KEY,
+            {DATABASE_COLUMN2} TEXT,
+            {DATABASE_COLUMN3} TEXT
         )
-    ''')
+    ''', logger)
 
 process_images(start_directory)

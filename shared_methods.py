@@ -37,7 +37,8 @@ def get_exif_data(file_path, exif_tag, logger):
             
             return exif_date
         elif result.returncode == 1 or result.stderr.strip():
-            return Exception(result.stderr.strip())
+            logger.error(f"Error getting {exif_tag} EXIF data from \"{file_path}\": {result.stderr.strip()}")
+            return None
         else:
             return None
     except Exception as e:
