@@ -4,6 +4,7 @@ import re
 import sys
 
 from logger_config import setup_custom_logger
+from shared_methods import get_exif_data, add_exif_data, move_or_rename_file
 logger = setup_custom_logger('Sort-N-Rename-Media')
 
 start_directory = os.path.abspath("D:\\My Photos\\Steve")  # Default directory
@@ -19,20 +20,6 @@ ASF_CREATION_DATE = 'CreationDate'
 CREATED_SUBSECONDS = 'SubSecTimeDigitized'
 PHOTO_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif'}
 VIDEO_EXTENSIONS = {'.m4v', '.mov', '.mp4', '.avi', '.mkv', '.wmv', '.flv', '.webm'}
-
-def add_exif_data(file_path, exif_tag, exif_data):
-    # Define the command to run exiftool and parse with awk
-    cmd = f'exiftool -overwrite_original -{exif_tag}="{exif_data}" "{file_path}"'
-    # Execute the command
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
-    # Check if the command was successful
-    if result.returncode == 0:
-        logger.info(f"Added \"{exif_data}\" to \"{exif_tag}\" on \"{file_path}\".")
-        return True
-    else:
-        # Handle errors (e.g., file not found, exiftool error)
-        logger.error(result.stderr.strip())
-        return False
 
 def process_files(start_directory):
 
@@ -79,35 +66,6 @@ def process_files(start_directory):
         # If there are no folders in start_directory, process files in start_directory
         rename_files_in_destination(start_directory)
 
-def get_exif_data(file_path, exif_tag):
-    # Define the command to run exiftool and parse with awk
-    cmd = f"exiftool -{exif_tag} \"{file_path}\"" + " | awk -F': ' 'BEGIN {OFS=\":\"} {for (i=2; i<=NF; i++) printf \"%s%s\", $i, (i==NF ? \"\\n\" : OFS)}'"
-    # Execute the command
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
-    # Check if the command was successful
-    if result.returncode == 0 and result.stdout.strip():
-        return result.stdout.strip()
-    elif result.returncode == 1 or result.stderr.strip():
-        logger.error(result.stderr.strip())
-    else:
-        return None
-
-# Get a unique filename by appending an index to the filename if a conflict exists
-def get_unique_filename(destination_item):    
-    if not os.path.exists(destination_item):
-        return destination_item  # Return the original name if there is no conflict
-
-    base, extension = os.path.splitext(destination_item)
-    index = 1
-    # Create a new filename with an index
-    new_destination_item = f"{base} ({index}){extension}"
-    # Increment the index until a unique filename is found
-    while os.path.exists(new_destination_item):
-        index += 1
-        new_destination_item = f"{base} ({index}){extension}"
-
-    return new_destination_item
-
 # Get new destination path based on year and month
 def get_new_destination(year, month, new_filename):
     if os.path.basename(start_directory) == year:
@@ -141,34 +99,6 @@ def format_new_filename(filename, extension):
     
     return None, None, None  # No match found
                 
-def move_or_rename_file(source, destination):
-    if source == destination:
-        logger.info(f"Source and destination are the same: \"{source}\".")
-        return
-    
-    try:
-        # Check if the destination folder exists, if not, create it
-        destination_folder = os.path.dirname(destination)
-        if not os.path.exists(destination_folder):
-            os.makedirs(destination_folder)
-
-        # Get a unique filename if a conflict exists
-        destination = get_unique_filename(destination)
-
-        os.rename(source, destination)
-        # Log moved if file name is same, but destination folder is different
-        if os.path.basename(source) == os.path.basename(destination):
-            logger.info(f"Moved \"{source}\" to \"{destination}\".")
-        # destination folder is different and file name is different
-        elif os.path.basename(source) != os.path.basename(destination) and os.path.dirname(source) != os.path.dirname(destination):
-            logger.info(f"Moved and Renamed \"{source}\" to \"{destination}\".")
-        # destination folder is different and file name is same
-        else: 
-            logger.info(f"Renamed \"{source}\" to \"{destination}\".")
-
-    except OSError as e:
-        logger.error(f"Error moving or renaming \"{source}\": {e}")
-
 def rename_files_in_destination(folder):
     # Get all entries in the directory
     entries = os.listdir(folder)
@@ -213,23 +143,34 @@ def rename_files_in_destination(folder):
             if (current_full_path == new_full_path):
                 continue
 
-            move_or_rename_file(current_full_path, new_full_path)
-            from_fileName = True
+            result, msg = move_or_rename_file(current_full_path, new_full_path)
+            if result == 'INFO':
+                logger.info(msg)
+                from_fileName = True
+            else:
+                logger.error(msg)
         else:
             # Check for Date Taken in EXIF data using Magick
-            exif_datetime = get_exif_data(os.path.join(folder, filename), DATETIME_ORIGINAL if photo else CREATED_DATE)
+            exif_datetime = None
+            exif_datetime = get_exif_data(os.path.join(folder, filename), DATETIME_ORIGINAL if photo else CREATED_DATE, logger)
             if not exif_datetime:
                 # Check for Date Taken in EXIF data using exiftool
-                exif_datetime = get_exif_data(os.path.join(folder, filename), FILE_MODIFY_DATE if photo else ASF_CREATION_DATE)
+                exif_datetime = get_exif_data(os.path.join(folder, filename), FILE_MODIFY_DATE if photo else ASF_CREATION_DATE, logger)
                 if not exif_datetime and video:
                     # Check for Date Taken in EXIF data using exiftool
-                    exif_datetime = get_exif_data(os.path.join(folder, filename), DATETIME_ORIGINAL)
+                    exif_datetime = get_exif_data(os.path.join(folder, filename), DATETIME_ORIGINAL, logger)
+            
 
             if exif_datetime:                   
                 micro = '000'
 
                 # Check for Subseconds in EXIF data using exiftool
-                microseconds = get_exif_data(os.path.join(folder, filename), ORIGINAL_SUBSECONDS if photo else CREATED_SUBSECONDS)
+                microseconds = None
+                try:
+                    microseconds = get_exif_data(os.path.join(folder, filename), ORIGINAL_SUBSECONDS if photo else CREATED_SUBSECONDS)
+                except Exception as e:
+                    logger.error(f"Error getting {ORIGINAL_SUBSECONDS if photo else CREATED_SUBSECONDS} EXIF tag from \"{filename}\": {e}")
+
                 if microseconds:                                        
                     # If the microseconds are less than 3 digits, pad with zeros, or more than 3 digits, round to 3 digits
                     micro = (microseconds.ljust(3, '0') if len(microseconds) < 3 else str(round(float('0.' + microseconds), 3))[2:].ljust(3, '0'))
@@ -248,11 +189,17 @@ def rename_files_in_destination(folder):
                 if (current_full_path == new_full_path):
                     continue
 
-                move_or_rename_file(current_full_path, new_full_path)
+                result, msg = move_or_rename_file(current_full_path, new_full_path)
+                if result == 'INFO':
+                    logger.info(msg)
+                    from_fileName = True
+                else:
+                    logger.error(msg)
 
         # Add the name as the Title in the EXIF data for pictures or videos if it was not extracted from the filename
         if new_full_path and name and not from_fileName:
-            add_exif_data(new_full_path, 'Title', name)      
+            if add_exif_data(new_full_path, 'Title', name):
+                logger.info(f"Added \"{name}\" to \"Title\" on \"{new_full_path}\".")
 
 # Rsync and remove source files
 def sync_folders(source_dir, destination_dir):
@@ -271,7 +218,8 @@ def sync_folders(source_dir, destination_dir):
         # Check if the item is a file or directory
         if os.path.isfile(source_item):
             # Move the file
-            move_or_rename_file(source_item, destination_item)
+            result, msg = move_or_rename_file(source_item, destination_item)
+            logger.info(msg) if result == 'INFO' else logger.error(msg)
         elif os.path.isdir(source_item):
             # Recursively call this function for subdirectories
             sync_folders(source_item, destination_item)
