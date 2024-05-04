@@ -1,16 +1,16 @@
 import os
-import subprocess
 import re
 import sys
 
 from logger_config import setup_custom_logger
-from shared_methods import get_exif_data, add_exif_data, move_or_rename_file
+from shared_methods import add_exif_data, move_or_rename_file, get_exif_datetime, log_error, log_info, log_warning
+from tqdm import tqdm
 logger = setup_custom_logger('Sort-N-Rename-Media')
 
 start_directory = os.path.abspath("D:\\My Photos\\Steve")  # Default directory
 
 # Regular expression patterns for date matching in filenames
-DATE_PATTERN = re.compile(r'^(\w{3}_)?(?P<year>\d{4})[\.\-:]?(?P<month>\d{2})[\.\-:]?(?P<day>\d{2})[\s\-_](?P<hour>\d{2})[\.\-:]?(?P<minute>\d{2})[\.\-:]?(?P<second>\d{2})(?:[\.\-:]?(?P<microseconds>\d{0,9}))?(?P<offset>\+\d{2}[\.\-:]\d{2})?',re.IGNORECASE)
+NAMED_DATE_PATTERN = re.compile(r'^(\w{3}_)?(?P<year>\d{4})[\.\-:]?(?P<month>\d{2})[\.\-:]?(?P<day>\d{2})[\s\-_](?P<hour>\d{2})[\.\-:]?(?P<minute>\d{2})[\.\-:]?(?P<second>\d{2})(?:[\.\-:]?(?P<microseconds>\d{0,9}))?(?P<offset>\+\d{2}[\.\-:]\d{2})?',re.IGNORECASE)
 DESIRED_PATTERN = re.compile(r'^(\d{4}-\d{2}-\d{2} \d{2}\.\d{2}\.\d{2}\.\d{3})', re.IGNORECASE)
 DATETIME_ORIGINAL = 'DateTimeOriginal'
 ORIGINAL_SUBSECONDS = 'SubSecTimeOriginal'
@@ -22,6 +22,24 @@ PHOTO_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif'}
 VIDEO_EXTENSIONS = {'.m4v', '.mov', '.mp4', '.avi', '.mkv', '.wmv', '.flv', '.webm'}
 
 def process_files(start_directory):
+    """
+    Processes directories and files in a given directory, focusing on folder syncing and file renaming based
+    on specific conditions related to folder names and their contents.
+
+    This function looks for directories that do not match typical year (YYYY) or month (MM) patterns,
+    and are not hidden. It will either sync files from folders named with year patterns to a similar
+    directory structure in the start_directory or rename files in directories that do not contain
+    year-labeled subdirectories.
+
+    Parameters:
+    - start_directory (str): The path of the directory from which to start processing.
+
+    Notes:
+    - This function assumes the presence of additional functions `sync_folders(source, destination)`
+      and `rename_files_in_destination(directory)` which handle the synchronization of folders and
+      the renaming of files respectively.
+    - It also assumes the presence of a logging function `log_info(logger, message)` for logging messages.
+    """
 
     # Find folders which are not named with a YEAR pattern (yyyy), or Month Pattern (MM) and not hidden folders
     folders = [f for f in os.listdir(start_directory) if os.path.isdir(os.path.join(start_directory, f))]
@@ -36,7 +54,7 @@ def process_files(start_directory):
         for folder in folders:
             # Find any year folders inside this folder, at any level.
             year_folders = []
-            for root, dirs, files in os.walk(os.path.join(start_directory, folder)):
+            for root, dirs, _ in os.walk(os.path.join(start_directory, folder)):
                 year_folders.extend([d for d in dirs if re.match(r'\d{4}', d)])
                 if (len(year_folders) > 0):
                     year_folders.sort()
@@ -60,29 +78,63 @@ def process_files(start_directory):
                     rename_files_in_destination(os.path.join(start_directory, folder))
             
             if (len(os.listdir) == 0):
-                logger.info(f"Deleting empty folder: {folder}")
+                log_info(logger, f"Deleting empty folder: {folder}")
                 os.rmdir(folder)
     else:
         # If there are no folders in start_directory, process files in start_directory
         rename_files_in_destination(start_directory)
 
 # Get new destination path based on year and month
-def get_new_destination(year, month, new_filename):
-    if os.path.basename(start_directory) == year:
+def get_new_destination(start_directory, year, month, new_filename):
+    """
+    Construct a new file path based on year and month criteria relative to the start_directory.
+
+    Args:
+    - start_directory (str): The base directory from which to calculate the new path.
+    - year (str): The year component for the new path.
+    - month (str): The month component for the new path.
+    - new_filename (str): The filename to append to the constructed path.
+
+    Returns:
+    - str: The constructed full path to the new file.
+    """
+
+    # Validate input parameters
+    if not all([year.isdigit() and len(year) == 4, month.isdigit() and len(month) in (1, 2), new_filename]):
+        raise ValueError("Invalid year, month, or filename provided.")
+
+    base_name = os.path.basename(start_directory)
+    
+    if base_name == year:
         new_full_path = os.path.join(start_directory, month, new_filename)
-    # else if basename of start_directory matches year, then create a new directory with month
-    elif os.path.basename(start_directory) == month:
-        new_full_path = os.path.join(start_directory, new_filename)    
-    elif re.match(r'\d{4}', os.path.basename(start_directory)):
+    elif base_name == month:
+        # This condition seems suspicious because 'month' is unlikely to be the root directory's name alone.
+        # Consider revising this based on actual requirements or expected directory structure.
+        new_full_path = os.path.join(start_directory, new_filename)
+    elif re.match(r'\d{4}', base_name):
+        # Assuming the base_name is a year, go up one level and create the expected structure
         parent_dir = os.path.dirname(start_directory)
         new_full_path = os.path.join(parent_dir, year, month, new_filename)
     else:
+        # Default case: append year and month to the current start_directory
         new_full_path = os.path.join(start_directory, year, month, new_filename)
 
     return new_full_path
     
 def format_new_filename(filename, extension):
-    match = DATE_PATTERN.match(filename)
+    """
+    Formats a new filename using date and time components extracted from the original filename and appends a specified extension.
+
+    Args:
+        filename (str): The original filename expected to contain date and time information.
+        extension (str): The extension to be appended to the new filename.
+
+    Returns:
+        tuple: A tuple containing the year, month, and new formatted filename.
+               Returns (None, None, None) if the filename does not match the expected format.
+    """
+
+    match = NAMED_DATE_PATTERN.match(filename)
     if match:
         # Get the date and time components from the filename
         year = match.group('year')
@@ -100,7 +152,24 @@ def format_new_filename(filename, extension):
     return None, None, None  # No match found
                 
 def rename_files_in_destination(folder):
-    # Get all entries in the directory
+    """
+    Renames files in a given directory based on their type (photo or video) and metadata.
+    It handles the directory recursively, and removes empty directories.
+
+    Args:
+    - folder (str): The path to the directory containing files to be renamed.
+
+    This function performs several key operations:
+    - Lists all files in the specified directory.
+    - Checks for empty directories and removes them if found.
+    - Identifies files based on their extensions and determines if they are photos or videos.
+    - Attempts to rename files based on existing filename patterns or metadata (EXIF data).
+    - Moves or renames files to new directories structured by year and month.
+    - Adds or updates EXIF data where necessary.
+
+    No return value. Log messages are generated for significant actions.
+    """
+
     entries = os.listdir(folder)
 
     # Filter entries to get only files
@@ -111,7 +180,7 @@ def rename_files_in_destination(folder):
         rename_files_in_destination(os.path.join(folder, entries[0]))
 
     if len(entries) == 0 and len(files) == 0:
-        logger.info(f"Deleting empty folder: {folder}")
+        log_info(logger, f"Deleting empty folder: {folder}", )
         os.rmdir(folder)
 
     for filename in files:                
@@ -143,41 +212,21 @@ def rename_files_in_destination(folder):
             if (current_full_path == new_full_path):
                 continue
 
-            result, msg = move_or_rename_file(current_full_path, new_full_path)
-            if result == 'INFO':
-                logger.info(msg)
-                from_fileName = True
-            else:
-                logger.error(msg)
+            move_or_rename_file(current_full_path, new_full_path, logger)
         else:
             # Check for Date Taken in EXIF data using Magick
-            exif_datetime = None
-            exif_datetime = get_exif_data(os.path.join(folder, filename), DATETIME_ORIGINAL if photo else CREATED_DATE, logger)
+            exif_datetime = get_exif_datetime(os.path.join(folder, filename), DATETIME_ORIGINAL if photo else CREATED_DATE, ORIGINAL_SUBSECONDS if photo else CREATED_SUBSECONDS, logger)
             if not exif_datetime:
                 # Check for Date Taken in EXIF data using exiftool
-                exif_datetime = get_exif_data(os.path.join(folder, filename), FILE_MODIFY_DATE if photo else ASF_CREATION_DATE, logger)
+                exif_datetime = get_exif_datetime(os.path.join(folder, filename), FILE_MODIFY_DATE if photo else ASF_CREATION_DATE, None, logger)
                 if not exif_datetime and video:
                     # Check for Date Taken in EXIF data using exiftool
-                    exif_datetime = get_exif_data(os.path.join(folder, filename), DATETIME_ORIGINAL, logger)
-            
-
+                    exif_datetime = get_exif_datetime(os.path.join(folder, filename), DATETIME_ORIGINAL, None, logger)
             if exif_datetime:                   
-                micro = '000'
-
-                # Check for Subseconds in EXIF data using exiftool
-                microseconds = None
-                try:
-                    microseconds = get_exif_data(os.path.join(folder, filename), ORIGINAL_SUBSECONDS if photo else CREATED_SUBSECONDS)
-                except Exception as e:
-                    logger.error(f"Error getting {ORIGINAL_SUBSECONDS if photo else CREATED_SUBSECONDS} EXIF tag from \"{filename}\": {e}")
-
-                if microseconds:                                        
-                    # If the microseconds are less than 3 digits, pad with zeros, or more than 3 digits, round to 3 digits
-                    micro = (microseconds.ljust(3, '0') if len(microseconds) < 3 else str(round(float('0.' + microseconds), 3))[2:].ljust(3, '0'))
-
                 # Append the microseconds to the datetime string
-                year, month, new_filename = format_new_filename(exif_datetime + '.' + micro, extension)
+                year, month, new_filename = format_new_filename(exif_datetime, extension)
 
+                # Skip if the filename is already in the correct format
                 if not year or not month or not new_filename:
                     continue
 
@@ -188,58 +237,72 @@ def rename_files_in_destination(folder):
                 current_full_path = os.path.join(folder, filename)
                 if (current_full_path == new_full_path):
                     continue
-
-                result, msg = move_or_rename_file(current_full_path, new_full_path)
-                if result == 'INFO':
-                    logger.info(msg)
-                    from_fileName = True
-                else:
-                    logger.error(msg)
+                
+                # Move or rename the file
+                move_or_rename_file(current_full_path, new_full_path, logger)
 
         # Add the name as the Title in the EXIF data for pictures or videos if it was not extracted from the filename
         if new_full_path and name and not from_fileName:
-            if add_exif_data(new_full_path, 'Title', name):
-                logger.info(f"Added \"{name}\" to \"Title\" on \"{new_full_path}\".")
+            if add_exif_data(new_full_path, 'Title', name, logger):
+                log_info(logger, f"Added \"{name}\" to \"Title\" on \"{new_full_path}\".")
 
-# Rsync and remove source files
+# Sync and remove source files
 def sync_folders(source_dir, destination_dir):
+    """
+    Synchronizes content from a source directory to a destination directory. This includes copying files and
+    recursively copying subdirectories. After synchronization, files in the destination directory are renamed
+    according to specific criteria defined in `rename_files_in_destination`.
+
+    Parameters:
+    - source_dir (str): The path of the source directory.
+    - destination_dir (str): The path of the destination directory.
+
+    Notes:
+    - Assumes the existence of `move_or_rename_file(source_item, destination_item, logger)` to handle
+      the moving and renaming of files.
+    - Assumes the existence of `rename_files_in_destination(directory)` to rename files based on certain criteria.
+    - Uses `log_warning(logger, message)` and `log_info(logger, message)` for logging purposes.
+    """
+
+    # Prevent synchronization to the same directory
     if source_dir == destination_dir:
-        logger.warning("Source and destination directories are the same.")
+        log_warning(logger, "Source and destination directories are the same.")
         return
 
     # Ensure the destination directory exists
     os.makedirs(destination_dir, exist_ok=True)
 
-    # Iterate through the source directory
+    # Iterate through each item in the source directory
     for item in os.listdir(source_dir):
         source_item = os.path.join(source_dir, item)
         destination_item = os.path.join(destination_dir, item)
 
-        # Check if the item is a file or directory
+        # Copy files and recursively copy directories
         if os.path.isfile(source_item):
-            # Move the file
-            result, msg = move_or_rename_file(source_item, destination_item)
-            logger.info(msg) if result == 'INFO' else logger.error(msg)
+            move_or_rename_file(source_item, destination_item, logger)
         elif os.path.isdir(source_item):
-            # Recursively call this function for subdirectories
             sync_folders(source_item, destination_item)
-            # Optionally remove the source directory if it's empty
+
+            # Remove the source subdirectory if it is empty after synchronization
             if not os.listdir(source_item):
-                logger.info(f"Deleting empty folder: {source_item}")
+                log_info(logger, f"Deleting empty folder: {source_item}")
                 os.rmdir(source_item)
 
+    # Remove the source directory if it is empty after synchronization
     if not os.listdir(source_dir):
-        logger.info(f"Deleting empty folder: {source_dir}")
+        log_info(logger, f"Deleting empty folder: {source_dir}")
         os.rmdir(source_dir)
 
-    # Rename files in destination directory
+    # Rename files in the destination directory and log completion
     rename_files_in_destination(destination_dir)
-    logger.info(f"Synchronization from \"{source_dir}\" to \"{destination_dir}\" complete.")
+    log_info(logger, f"Synchronization from \"{source_dir}\" to \"{destination_dir}\" complete.")
 
 # Command line interaction
-if len(sys.argv) > 1:
-    start_directory = sys.argv[1]
-if not os.path.isdir(start_directory):
-    logger.error(f"\"{start_directory}\" is not a valid directory.")
-    sys.exit(1)        
-process_files(start_directory)
+if __name__ == '__main__':
+    log_info(logger, f"Current working directory: {os.getcwd()}")  
+    if len(sys.argv) > 1:
+        start_directory = sys.argv[1]
+    if not os.path.isdir(start_directory):
+        log_error(logger, f"\"{start_directory}\" is not a valid directory.")
+        sys.exit(1)        
+    process_files(start_directory)

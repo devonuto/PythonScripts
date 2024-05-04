@@ -1,9 +1,9 @@
 import os
-import subprocess
 import re
 import sys
 
 from logger_config import setup_custom_logger
+from shared_methods import delete_empty_folders, get_exif_data, move_or_rename_file, delete_empty_folders
 logger = setup_custom_logger('Rename-Jpgs')
 
 # Regular expression patterns for date matching in filenames
@@ -17,38 +17,6 @@ def adjust_datetime_string(datetime_str):
         # If not, append '.000'
         datetime_str += '.000'
     return datetime_str
-
-def convert_exif_date(exif_date):
-    # Check if the input is empty or None
-    if not exif_date:
-        return None
-    
-    try:
-        # Split the date and time parts
-        date_part, time_part = exif_date.split(' ')
-        # Replace the colons in the date part
-        date_part = date_part.replace(':', '-')
-        # Replace the colon in the time part
-        time_part = time_part.replace(':', '.')
-        # Combine them back into the final format
-        formatted_date = date_part + ' ' + time_part
-        return formatted_date
-    except ValueError as ve:
-        return None
-    except Exception as e:
-        return None
-
-def delete_empty_folders(directory):
-    # Walk through all directories and subdirectories, bottom-up to ensure we remove empty subdirectories first
-    for dirpath, dirnames, filenames in os.walk(directory, topdown=False):
-        # Check if directory is empty
-        if not dirnames and not filenames:
-            try:
-                os.rmdir(dirpath)
-                logger.info(f"Deleted empty folder: {dirpath}")
-            except OSError as e:
-                # Directory not empty or other issue such as insufficient permissions
-                logger.error(f"Failed to delete {dirpath}: {e}")
 
 def find_base_directory(current_directory):
     # This function walks up the directory tree to find the base directory just above the year folder
@@ -85,39 +53,20 @@ def get_datetime_from_filename(full_path):
 
 # Function to get the datetime from EXIF data using exiftool
 def get_exif_datetime(file_path):
-    try:
-        # First command to get the primary DateTimeOriginal
-        cmd = ['magick', 'identify', '-format', '%[EXIF:DateTimeOriginal]', file_path]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if result.returncode == 0 and result.stdout.strip():
-            output = convert_exif_date(result.stdout.strip())
-            if not output:
-                return None
+    micro = '000'    
+    datetime_str = get_exif_data(file_path, 'DateTimeOriginal', logger)
+    if not datetime_str:
+        return None
 
-            # initialize micro to '000' in case there is no SubSecTimeOriginal
-            micro = '000'
-            microseconds = None
-
-            # Second command to get the SubSecTimeOriginal
-            cmd = ['magick', 'identify', '-format', '%[EXIF:SubSecTimeOriginal]', file_path]
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            if result.returncode == 0 and result.stdout.strip():
-                microseconds = result.stdout.strip()
-
-            # Check and format micro, even if it hasn't changed from '000'
-            if microseconds and microseconds.isdigit():
-                # Ensure micro has exactly three digits
-                micro = (microseconds.ljust(3, '0') if len(microseconds) < 3 else str(round(float('0.' + microseconds), 3))[2:].ljust(3, '0'))
-            
-            # Build the final datetime string
-            datetime_str = output + '.' + micro
-
-            return datetime_str        
-    except subprocess.TimeoutExpired:
-        logger.error(f"Timeout expired while reading EXIF data for {file_path}")
-    except Exception as e:
-        logger.error(f"Error reading EXIF data for {file_path}: {str(e)}")
-    return None
+    microseconds = get_exif_data(file_path, 'SubSecTimeOriginal', logger)
+    # Check and format micro, even if it hasn't changed from '000'
+    if microseconds and microseconds.isdigit():
+        # Ensure micro has exactly three digits
+        micro = (microseconds.ljust(3, '0') if len(microseconds) < 3 else str(round(float('0.' + microseconds), 3))[2:].ljust(3, '0'))
+    
+        # Build the final datetime string
+    datetime_str += '.' + micro
+    return datetime_str        
 
 # Utility functions for checking file types and formats
 def is_jpeg_extension(file_name):
@@ -160,26 +109,6 @@ def is_desired_format(filename):
 def is_missing_time(filename):
     return bool(no_time.search(filename))
 
-# Function to move and optionally rename file
-def move_and_rename_file(original_path, new_full_path, rename, move):
-    new_directory, new_name = os.path.split(new_full_path)
-    if not os.path.exists(new_directory):
-        os.makedirs(new_directory)
-    if os.path.exists(new_full_path):
-        base_name, extension = os.path.splitext(new_name)
-        counter = 1
-        while os.path.exists(os.path.join(new_directory, f"{base_name} ({counter}){extension}")):
-            counter += 1
-        new_full_path = os.path.join(new_directory, f"{base_name} ({counter}){extension}")
-    os.rename(original_path, new_full_path)
-
-    if move and rename: 
-        logger.info(f"Moved and renamed {original_path} to {new_full_path}")
-    elif move:
-        logger.info(f"Moved {original_path} to {new_full_path}")
-    elif rename:
-        logger.info(f"Renamed {original_path} to {new_full_path}")
-
 # Function to ensure files are in correct date folder structure
 def move_file_to_date_folder(original_path, datetime_str):
     datetime_str = adjust_datetime_string(datetime_str)
@@ -205,13 +134,13 @@ def move_file_to_date_folder(original_path, datetime_str):
     # Define new filename or use existing logic to ensure it matches the desired format
     new_filename = f"{datetime_str}.jpg" 
     new_path = os.path.join(expected_directory, new_filename)
-    move_and_rename_file(original_path, new_path, new_filename != filename, current_directory != expected_directory)
+    move_or_rename_file(original_path, new_path, logger)
 
 # Main function to process all files in a directory
 def process_files(directory):
     for root, dirs, files in os.walk(directory):
-        # Modify dirs in-place to skip hidden directories starting with '@'
-        dirs[:] = [d for d in dirs if not d.startswith('@')]
+        # Modify dirs in-place to skip non-standard directories
+        dirs[:] = [d for d in dirs if re.match(r'^[a-zA-Z0-9]', d)]
 
         for file in files:
             if is_jpeg_extension(file):
@@ -229,6 +158,7 @@ def process_files(directory):
 
 # Command line interaction
 if __name__ == "__main__":
+    logger.info(f"Current working directory: {os.getcwd()}")
     if len(sys.argv) < 2:
         start_directory = os.path.abspath("D:\\My Photos\\Loui")
         # logger.error("Error: Please provide a directory to process. Usage: python Rename-Jpgs.py <directory>")
@@ -238,4 +168,4 @@ if __name__ == "__main__":
         logger.error(f"Error: {start_directory} is not a valid directory.")
         sys.exit(1)        
     process_files(start_directory)
-    delete_empty_folders(start_directory)
+    delete_empty_folders(start_directory, logger)

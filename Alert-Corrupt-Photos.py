@@ -1,8 +1,12 @@
 import os
-from PIL import Image
+import re
 import sys
 import time  # Import the time module for the sleep function
-import shutil # for moving files
+from logger_config import setup_custom_logger
+from PIL import Image
+from shared_methods import move_or_rename_file, PHOTO_EXTENSIONS
+
+logger = setup_custom_logger('Alert-Custom-Images')
 
 def is_corrupted(filepath, max_attempts=3):
     attempt = 0
@@ -24,16 +28,15 @@ def is_corrupted(filepath, max_attempts=3):
 def find_corrupted_images(directory):
     corrupted_files = []
     for root, dirs, files in os.walk(directory):
-        # Modify dirs in-place to skip the corrupted directory 
-        if corrupted_dir in dirs:
-            dirs.remove(corrupted_dir)  # This prevents os.walk from walking into corrupted directory
-
+        dirs[:] = [d for d in dirs if re.match(r'^[a-zA-Z0-9]' and not d == corrupted_dir, d)]
+        files = [f for f in files if '.' + f.split('.')[-1].lower() in PHOTO_EXTENSIONS]
         for filename in files:
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')):
+            _, extension = os.path.splitext(filename)
+            if extension.lower() in PHOTO_EXTENSIONS:
                 file_path = os.path.join(root, filename)
                 corrupted_file_path = os.path.join(corrupted_dir, filename)
                 if is_corrupted(file_path):
-                    shutil.move(file_path, corrupted_file_path)  # Move the corrupted file
+                    move_or_rename_file(file_path, corrupted_file_path, logger, None)
                     corrupted_files.append(corrupted_file_path)
     return corrupted_files
 
