@@ -7,7 +7,7 @@ from logger_config import setup_custom_logger
 from tqdm import tqdm
 from shared_methods import (get_exif_data, add_exif_data, setup_database, has_been_processed, record_db_update,
                             close_connection, get_file_count, log_info, log_error, is_first_date_more_recent, 
-                            DATETIME, PHOTO_EXTENSIONS)
+                            check_requirements, DATETIME, PHOTO_EXTENSIONS)
 
 logger = setup_custom_logger('Add-Missing-EXIF')
 
@@ -78,6 +78,7 @@ def process_images(start_directory):
 
 # Command line interaction
 if __name__ == '__main__':
+    check_requirements()
     log_info(logger, f"Current working directory: {os.getcwd()}")
     if len(sys.argv) > 1:
         start_directory = sys.argv[1]

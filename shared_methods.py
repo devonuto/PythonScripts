@@ -1,9 +1,12 @@
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
+import importlib.util
 from datetime import datetime
+from importlib import metadata
 from tqdm import tqdm
 
 DATETIME = re.compile(r'^\d{4}[\-\:\.]\d{2}[\-\:\.]\d{2}\s\d{2}[\-\:\.]\d{2}[\-\:\.]\d{2}([\-\:\.]\d{3})?', re.IGNORECASE)
@@ -46,6 +49,46 @@ def add_exif_data(file_path, exif_tag, exif_data, logger, progress_bar=None):
     except Exception as e:
         log_error(logger, f"Error adding {exif_tag} EXIF data to \"{file_path}\":", e, progress_bar)
         return False
+
+def check_requirements():
+    """
+    Checks if all required system tools and Python packages are available.
+
+    Raises:
+        Exception: If any of the required tools or packages are missing.
+    """
+    # System tools expected to be available (e.g., exiftool)
+    system_tools = ['exiftool']
+
+    # Python packages and modules to check (as a dictionary with None if no version check is needed)
+    python_packages = {
+        'sqlite3': None,  # Standard library module, no version required
+        'tqdm': '4.46.0'  # Minimum version requirement for tqdm
+    }
+
+    # Check for system tools
+    for tool in system_tools:
+        if not shutil.which(tool):
+            raise Exception(f"Required system tool missing: {tool}")
+
+    # Check for Python packages
+    for package, required_version in python_packages.items():
+        if required_version is None:
+            # Check by trying to import the module
+            if importlib.util.find_spec(package) is None:
+                raise Exception(f"Required Python module not installed: {package}")
+        else:
+            # Check using importlib.metadata for external packages
+            try:
+                from importlib import metadata
+                version = metadata.version(package)
+                if version < required_version:
+                    raise Exception(f"Package '{package}' version '{version}' is below required version '{required_version}'")
+            except metadata.PackageNotFoundError:
+                raise Exception(f"Required Python package not installed: {package}")
+
+    print("All system requirements are satisfied.")
+
 
 # Helper function to close the database connection
 def close_connection(conn, logger, progress_bar=None):
@@ -224,7 +267,8 @@ def get_exif_data(file_path, exif_tag, logger, progress_bar=None):
                 parts = line.split(': ', 1)  # Split on the first colon only
                 if len(parts) == 2:
                     _, value = parts
-            return value.strip()
+            
+            return value.strip() if value else None
         else:
             raise Exception(f"Error reading EXIF data: {result.stderr}")
     except Exception as e:
@@ -549,6 +593,8 @@ def setup_database(database_name, sql, logger, progress_bar=None):
     """
     try:
         conn = sqlite3.connect(database_name)
+        if not conn:
+            raise Exception(f"Error connecting to database: {database_name}")
         log_info(logger, f"Connected to database: {database_name}", progress_bar)
         c = conn.cursor()
         c.execute(sql)
