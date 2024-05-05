@@ -490,7 +490,8 @@ def log_info(logger, message, progress_bar=None):
     """
     if progress_bar:
         progress_bar.set_description(message)
-    logger.info(message)
+    if logger:
+        logger.info(message)
 
 def log_error(logger, message, e=None, progress_bar=None):
     """
@@ -511,7 +512,9 @@ def log_error(logger, message, e=None, progress_bar=None):
     """
     if progress_bar:
         progress_bar.set_description(message)
-    logger.error(f"{message} {e if not None else ''}")
+
+    if logger:
+        logger.error(f"{message} {e if not None else ''}")
 
 def log_warning(logger, message, progress_bar=None):
     """
@@ -531,7 +534,8 @@ def log_warning(logger, message, progress_bar=None):
     """
     if progress_bar:
         progress_bar.set_description(message)
-    logger.warning(message)
+    if logger:
+        logger.warning(message)
 
 def record_db_update(conn, table_name, columns, values, logger, progress_bar=None):
     """
