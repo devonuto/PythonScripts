@@ -98,13 +98,12 @@ def create_new_filename_from_exif_data(folder, filename, extension, photo, video
     Returns:
         tuple: A tuple containing:
                - The current full path to the file.
-               - The new full path to the file if a new filename was successfully generated and differs from the original;
-                 None otherwise.
+               - The new full path to the file if a new filename was successfully generated and differs from the original; None otherwise.
     """
 
     # Validate input parameters
     if not folder or not filename or not extension:
-        return None, None;
+        return None, None
 
     # Determine appropriate tags for EXIF data extraction based on media type
     exif_datetime = get_exif_datetime(
@@ -280,11 +279,11 @@ def rename_files_in_destination(folder):
                 if (current_full_path == new_full_path):
                     continue
 
-                from_fileName = True;
+                from_fileName = True
             else:
-                current_full_path, new_full_path = create_new_filename_from_exif_data(folder, filename, extension, photo, video);                                
+                current_full_path, new_full_path = create_new_filename_from_exif_data(folder, filename, extension, photo, video)                         
         else:
-            current_full_path, new_full_path = create_new_filename_from_exif_data(folder, filename, extension, photo, video);
+            current_full_path, new_full_path = create_new_filename_from_exif_data(folder, filename, extension, photo, video)
 
         if current_full_path and new_full_path:
             move_or_rename_file(current_full_path, new_full_path, logger)
