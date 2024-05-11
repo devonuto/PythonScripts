@@ -101,6 +101,11 @@ def create_new_filename_from_exif_data(folder, filename, extension, photo, video
                - The new full path to the file if a new filename was successfully generated and differs from the original;
                  None otherwise.
     """
+
+    # Validate input parameters
+    if not folder or not filename or not extension:
+        return None, None;
+
     # Determine appropriate tags for EXIF data extraction based on media type
     exif_datetime = get_exif_datetime(
         os.path.join(folder, filename),
