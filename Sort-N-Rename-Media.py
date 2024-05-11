@@ -3,15 +3,11 @@ import re
 import sys
 
 from logger_config import setup_custom_logger
-from shared_methods import add_exif_data, move_or_rename_file, get_exif_datetime, log_error, log_info, log_warning
-from tqdm import tqdm
+from shared_methods import add_exif_data, move_or_rename_file, get_exif_datetime, log_error, log_info, log_warning, is_desired_media_file_format
 logger = setup_custom_logger('Sort-N-Rename-Media')
-
-start_directory = os.path.abspath("D:\\My Photos\\Steve")  # Default directory
 
 # Regular expression patterns for date matching in filenames
 NAMED_DATE_PATTERN = re.compile(r'^(\w{3}_)?(?P<year>\d{4})[\.\-:]?(?P<month>\d{2})[\.\-:]?(?P<day>\d{2})[\s\-_](?P<hour>\d{2})[\.\-:]?(?P<minute>\d{2})[\.\-:]?(?P<second>\d{2})(?:[\.\-:]?(?P<microseconds>\d{0,9}))?(?P<offset>\+\d{2}[\.\-:]\d{2})?',re.IGNORECASE)
-DESIRED_PATTERN = re.compile(r'^(\d{4}-\d{2}-\d{2} \d{2}\.\d{2}\.\d{2}\.\d{3})', re.IGNORECASE)
 DATETIME_ORIGINAL = 'DateTimeOriginal'
 ORIGINAL_SUBSECONDS = 'SubSecTimeOriginal'
 CREATED_DATE = 'CreateDate'
@@ -77,12 +73,76 @@ def process_files(start_directory):
                     # If directory doesn't have a year folder in it, move and rename files in this folder.
                     rename_files_in_destination(os.path.join(start_directory, folder))
             
-            if (len(os.listdir) == 0):
+            if (os.path.exists(folder) and len(os.listdir(folder)) == 0):
                 log_info(logger, f"Deleting empty folder: {folder}")
                 os.rmdir(folder)
-    else:
-        # If there are no folders in start_directory, process files in start_directory
-        rename_files_in_destination(start_directory)
+       
+    # If there are no folders in start_directory, process files in start_directory
+    rename_files_in_destination(start_directory)
+
+def create_new_filename_from_exif_data(folder, filename, extension, photo, video):
+    """
+    Generates a new filename based on EXIF metadata for given media file and determines its new destination path.
+    
+    The function uses EXIF data to determine the creation date and time of a media file (photo or video) and formats
+    a new filename based on this data. It ensures the new filename is placed in the correct year and month directory
+    within the specified start directory.
+
+    Args:
+        folder (str): The directory where the media file is located.
+        filename (str): The name of the file, including its extension.
+        extension (str): The file extension (e.g., '.jpg', '.mp4').
+        photo (bool): True if the file is a photo, False otherwise.
+        video (bool): True if the file is a video, False otherwise.
+
+    Returns:
+        tuple: A tuple containing:
+               - The current full path to the file.
+               - The new full path to the file if a new filename was successfully generated and differs from the original;
+                 None otherwise.
+    """
+    # Determine appropriate tags for EXIF data extraction based on media type
+    exif_datetime = get_exif_datetime(
+        os.path.join(folder, filename),
+        DATETIME_ORIGINAL if photo else CREATED_DATE,
+        ORIGINAL_SUBSECONDS if photo else CREATED_SUBSECONDS,
+        logger
+    )
+    
+    # If initial EXIF data extraction fails, try alternative tags
+    if not exif_datetime:
+        exif_datetime = get_exif_datetime(
+            os.path.join(folder, filename),
+            FILE_MODIFY_DATE if photo else ASF_CREATION_DATE,
+            None,
+            logger
+        )
+        # Additional attempt for videos if previous steps fail
+        if not exif_datetime and video:
+            exif_datetime = get_exif_datetime(
+                os.path.join(folder, filename),
+                DATETIME_ORIGINAL,
+                None,
+                logger
+            )
+    
+    # If EXIF datetime is successfully extracted, proceed to format new filename
+    if exif_datetime:                   
+        year, month, new_filename = format_new_filename(exif_datetime, extension)
+
+        # Validate new filename components
+        if not year or not month or not new_filename:
+            return None, None
+
+        # Generate new full path for the file
+        new_full_path = get_new_destination(start_directory, year, month, new_filename)
+
+        # Compare new full path with current path to avoid unnecessary changes
+        current_full_path = os.path.join(folder, filename)
+        if current_full_path == new_full_path:
+            return current_full_path, None
+        
+        return current_full_path, new_full_path
 
 # Get new destination path based on year and month
 def get_new_destination(start_directory, year, month, new_filename):
@@ -169,6 +229,8 @@ def rename_files_in_destination(folder):
 
     No return value. Log messages are generated for significant actions.
     """
+    if not folder or os.path.isdir(folder):
+        return
 
     entries = os.listdir(folder)
 
@@ -199,47 +261,28 @@ def rename_files_in_destination(folder):
         if not photo and not video:
             continue
 
-        new_full_path = None
         from_fileName = False
+        new_full_path = None
+        current_full_path = os.path.join(folder, filename)
 
         # Attempt to format the new filename based on the existing filename
-        year, month, new_filename = format_new_filename(name, extension)
-        if year and month and new_filename:                     
-            new_full_path = get_new_destination(year, month, new_filename)
-            
-            # If the new full path is the same as the current full path, skip the file
-            current_full_path = os.path.join(folder, filename)
-            if (current_full_path == new_full_path):
-                continue
-
-            move_or_rename_file(current_full_path, new_full_path, logger)
-        else:
-            # Check for Date Taken in EXIF data using Magick
-            exif_datetime = get_exif_datetime(os.path.join(folder, filename), DATETIME_ORIGINAL if photo else CREATED_DATE, ORIGINAL_SUBSECONDS if photo else CREATED_SUBSECONDS, logger)
-            if not exif_datetime:
-                # Check for Date Taken in EXIF data using exiftool
-                exif_datetime = get_exif_datetime(os.path.join(folder, filename), FILE_MODIFY_DATE if photo else ASF_CREATION_DATE, None, logger)
-                if not exif_datetime and video:
-                    # Check for Date Taken in EXIF data using exiftool
-                    exif_datetime = get_exif_datetime(os.path.join(folder, filename), DATETIME_ORIGINAL, None, logger)
-            if exif_datetime:                   
-                # Append the microseconds to the datetime string
-                year, month, new_filename = format_new_filename(exif_datetime, extension)
-
-                # Skip if the filename is already in the correct format
-                if not year or not month or not new_filename:
-                    continue
-
-                # Construct the new full path based on the extracted components
-                new_full_path = get_new_destination(year, month, new_filename)
-
+        if is_desired_media_file_format(name):
+            year, month, new_filename = format_new_filename(name, extension)
+            if year and month and new_filename:                     
+                new_full_path = get_new_destination(start_directory, year, month, new_filename)
+                
                 # If the new full path is the same as the current full path, skip the file
-                current_full_path = os.path.join(folder, filename)
                 if (current_full_path == new_full_path):
                     continue
-                
-                # Move or rename the file
-                move_or_rename_file(current_full_path, new_full_path, logger)
+
+                from_fileName = True;
+            else:
+                current_full_path, new_full_path = create_new_filename_from_exif_data(folder, filename, extension, photo, video);                                
+        else:
+            current_full_path, new_full_path = create_new_filename_from_exif_data(folder, filename, extension, photo, video);
+
+        if current_full_path and new_full_path:
+            move_or_rename_file(current_full_path, new_full_path, logger)
 
         # Add the name as the Title in the EXIF data for pictures or videos if it was not extracted from the filename
         if new_full_path and name and not from_fileName:
@@ -284,12 +327,12 @@ def sync_folders(source_dir, destination_dir):
             sync_folders(source_item, destination_item)
 
             # Remove the source subdirectory if it is empty after synchronization
-            if not os.listdir(source_item):
+            if os.path.exists(source_item) and not os.listdir(source_item):
                 log_info(logger, f"Deleting empty folder: {source_item}")
                 os.rmdir(source_item)
 
     # Remove the source directory if it is empty after synchronization
-    if not os.listdir(source_dir):
+    if os.path.exists(source_dir) and not os.listdir(source_dir):
         log_info(logger, f"Deleting empty folder: {source_dir}")
         os.rmdir(source_dir)
 
@@ -300,8 +343,10 @@ def sync_folders(source_dir, destination_dir):
 # Command line interaction
 if __name__ == '__main__':
     log_info(logger, f"Current working directory: {os.getcwd()}")  
-    if len(sys.argv) > 1:
-        start_directory = sys.argv[1]
+    if len(sys.argv) < 2:
+        log_error(logger, "No directory path provided.")
+        sys.exit(1)
+    start_directory = sys.argv[1]
     if not os.path.isdir(start_directory):
         log_error(logger, f"\"{start_directory}\" is not a valid directory.")
         sys.exit(1)        

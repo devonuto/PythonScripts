@@ -56,7 +56,7 @@ def process_images(start_directory):
                 # Get the date and time from the file's EXIF data
                 exif_date = get_exif_data(file_path, 'DateTimeOriginal', logger, progress_bar)
                 # if not exif_date or exif_date is more recent than date_time in filename, update exif data with date_time
-                if not exif_date or is_first_date_more_recent(exif_date, file_name):
+                if is_first_date_more_recent(exif_date, file_name):
                     # Add the date and time to the file's EXIF data from filename
                     try:
                         if add_exif_data(file_path, 'DateTimeOriginal', file_name, progress_bar):

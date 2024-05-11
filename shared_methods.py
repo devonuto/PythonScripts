@@ -7,9 +7,9 @@ import sys
 import importlib.util
 from datetime import datetime
 from importlib import metadata
-from tqdm import tqdm
 
 DATETIME = re.compile(r'^\d{4}[\-\:\.]\d{2}[\-\:\.]\d{2}\s\d{2}[\-\:\.]\d{2}[\-\:\.]\d{2}([\-\:\.]\d{3})?', re.IGNORECASE)
+DESIRED_FORMAT = re.compile(r'^(\d{4}-\d{2}-\d{2} \d{2}\.\d{2}\.\d{2}\.\d{3})', re.IGNORECASE)
 PHOTO_EXTENSIONS = {'.png', '.jpg', '.jpeg' }
 VIDEO_EXTENSIONS = {'.m4v', '.mov', '.mp4', '.avi', '.mkv', '.wmv', '.flv', '.webm'}
 
@@ -80,7 +80,6 @@ def check_requirements():
         else:
             # Check using importlib.metadata for external packages
             try:
-                from importlib import metadata
                 version = metadata.version(package)
                 if version < required_version:
                     raise Exception(f"Package '{package}' version '{version}' is below required version '{required_version}'")
@@ -207,32 +206,38 @@ def get_date_object(date_str):
     # Parse the date part
     return datetime.strptime(sanitized_date_part, date_format)
 
+def is_desired_media_file_format(filename):
+    return bool(DESIRED_FORMAT.match(filename))
+
 def is_first_date_more_recent(date_str1, date_str2):
     """
-    Compares two date strings and determines if the first date is more recent than the second.
+    Determines if the first date string represents a more recent date compared to the second date string.
 
-    This function takes two date strings, converts them into datetime.date objects using the get_date_object function,
-    and then compares these dates. It returns True if the first date is more recent than the second, otherwise False.
-
-    Args:
-    - date_str1 (str): The first date string to compare. Expected to be in a recognizable date format.
-    - date_str2 (str): The second date string to compare. Expected to be in a recognizable date format.
+    Parameters:
+    date_str1 (str): The first date string to compare.
+    date_str2 (str): The second date string to compare.
 
     Returns:
-    - bool: True if the first date is more recent than the second, False otherwise.
+    bool: True if the first date is more recent than the second date, False otherwise or if any date string is empty or invalid.
 
-    Raises:
-    - ValueError: If either date_str1 or date_str2 cannot be parsed into a date, likely due to incorrect formatting.
-
-    Example:
-    - Input: date_str1 = '2023-06-02', date_str2 = '2023-06-01'
-    - Output: True
+    Assumptions:
+    - `date_str1` and `date_str2` should be in a format recognizable by the `get_date_object` function.
+    - This function assumes that the `get_date_object` can parse the date strings and return date objects.
+    - A global `DATETIME` regex pattern is used to validate date strings before parsing.
     """
+
+    if (not date_str1) or (not date_str2):
+        return True
+    
+    if not DATETIME.search(date_str1) or not DATETIME.search(date_str2):
+        return True
+
     date1 = get_date_object(date_str1)
     date2 = get_date_object(date_str2)
 
     # Compare the dates and return True if date1 is more recent, False otherwise
-    return date1 > date2
+    result = date1 > date2
+    return result
 
 def get_exif_data(file_path, exif_tag, logger, progress_bar=None):
     """

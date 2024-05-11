@@ -3,12 +3,11 @@ import re
 import sys
 
 from logger_config import setup_custom_logger
-from shared_methods import delete_empty_folders, get_exif_data, move_or_rename_file, delete_empty_folders
+from shared_methods import delete_empty_folders, get_exif_data, move_or_rename_file, delete_empty_folders, is_desired_media_file_format
 logger = setup_custom_logger('Rename-Jpgs')
 
 # Regular expression patterns for date matching in filenames
 date_pattern = re.compile(r'^(\w{3}_)?(?P<year>\d{4})-?(?P<month>\d{2})-?(?P<day>\d{2})[\s_](?P<hour>\d{2})\.?(?P<minute>\d{2})\.?(?P<second>\d{2})(?:\.?(?P<microseconds>\d{0,3}))?',re.IGNORECASE)
-desired_format = re.compile(r'^(\d{4}-\d{2}-\d{2} \d{2}\.\d{2}\.\d{2}\.\d{3})', re.IGNORECASE)
 no_time = re.compile(r'00\.00\.00(\.000)?$')
 
 def adjust_datetime_string(datetime_str):
@@ -103,9 +102,6 @@ def is_correct_index(new_path):
     else:
         return True
 
-def is_desired_format(filename):
-    return bool(desired_format.match(filename))
-
 def is_missing_time(filename):
     return bool(no_time.search(filename))
 
@@ -124,7 +120,7 @@ def move_file_to_date_folder(original_path, datetime_str):
     filename = os.path.basename(original_path)
     new_path = os.path.join(expected_directory, filename)
 
-    if os.path.abspath(original_path) == os.path.abspath(new_path) and is_desired_format(filename) and is_correct_index(new_path):
+    if os.path.abspath(original_path) == os.path.abspath(new_path) and is_desired_media_file_format(filename) and is_correct_index(new_path):
         logger.info(f"{original_path} is already in the correct format and directory.")
         return
 
@@ -146,7 +142,7 @@ def process_files(directory):
             if is_jpeg_extension(file):
                 full_path = os.path.join(root, file)
                 datetime_str = get_datetime_from_filename(full_path)  # Get datetime from filename 
-                if not datetime_str or not is_desired_format(datetime_str):
+                if not datetime_str or not is_desired_media_file_format(datetime_str):
                     exif_datetime = get_exif_datetime(full_path)  # Get datetime from EXIF data
                     if (exif_datetime and not is_missing_time(exif_datetime)) or (exif_datetime and not datetime_str):
                         datetime_str = exif_datetime
