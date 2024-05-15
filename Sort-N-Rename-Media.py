@@ -3,12 +3,13 @@ import re
 import sys
 
 from logger_config import setup_custom_logger
-from shared_methods import add_exif_data, move_or_rename_file, get_exif_datetime, log_error, log_info, log_warning, is_desired_media_file_format
+from shared_methods import (add_exif_data, move_or_rename_file, get_exif_datetime, log_error, 
+                            log_info, log_warning, is_desired_media_file_format, DATETIME)
 logger = setup_custom_logger('Sort-N-Rename-Media')
 
 # Regular expression patterns for date matching in filenames
 NAMED_DATE_PATTERN = re.compile(r'^(\w{3}_)?(?P<year>\d{4})[\.\-:]?(?P<month>\d{2})[\.\-:]?(?P<day>\d{2})[\s\-_](?P<hour>\d{2})[\.\-:]?(?P<minute>\d{2})[\.\-:]?(?P<second>\d{2})(?:[\.\-:]?(?P<microseconds>\d{0,9}))?(?P<offset>\+\d{2}[\.\-:]\d{2})?',re.IGNORECASE)
-DATETIME_ORIGINAL = 'DateTimeOriginal'
+DATETIME_ORIGINAL = 'DateTimeOriginal' 
 ORIGINAL_SUBSECONDS = 'SubSecTimeOriginal'
 CREATED_DATE = 'CreateDate'
 FILE_MODIFY_DATE = 'FileModifyDate'
@@ -131,7 +132,34 @@ def create_new_filename_from_exif_data(folder, filename, extension, photo, video
             )
     
     # If EXIF datetime is successfully extracted, proceed to format new filename
-    if exif_datetime:                   
+    if exif_datetime:
+        # If the named date pattern matches the filename and the extracted EXIF datetime, proceed with formatting
+        exif_match = NAMED_DATE_PATTERN.match(exif_datetime)
+        filename_match = NAMED_DATE_PATTERN.match(filename)
+        
+        # Check if the filename and EXIF datetime match the expected pattern
+        if exif_match and filename_match and exif_match.group('hour') == '00' and filename_match.group('hour') != '00':
+            # If the EXIF data does not hav a year and the filename does, use the filename datetime
+            if exif_match.group('year') == '0000' and filename_match.group('year') != '0000':
+                exif_datetime = (filename_match.group('year') +
+                                ':' + filename_match.group('month') +
+                                ':' + filename_match.group('day') +
+                                ' ' + filename_match.group('hour') +
+                                ':' + filename_match.group('minute') +
+                                ':' + filename_match.group('second'))
+            # If the filename has a time and the EXIF data does not, use the filename time
+            else:
+                exif_datetime = (exif_match.group('year') +
+                                ':' + exif_match.group('month') +
+                                ':' + exif_match.group('day') +
+                                ' ' + filename_match.group('hour') +
+                                ':' + filename_match.group('minute') +
+                                ':' + filename_match.group('second'))
+
+            # Update the EXIF data with the new datetime
+            if add_exif_data(os.path.join(folder, filename), DATETIME_ORIGINAL, exif_datetime, logger):
+                log_info(logger, f"Updated \"{DATETIME_ORIGINAL}\" to \"{exif_datetime}\" on \"{filename}\".")
+
         year, month, new_filename = format_new_filename(exif_datetime, extension)
 
         # Validate new filename components
@@ -233,7 +261,7 @@ def rename_files_in_destination(folder):
 
     No return value. Log messages are generated for significant actions.
     """
-    if not folder or os.path.isdir(folder):
+    if not folder or not os.path.isdir(folder):
         return
 
     entries = os.listdir(folder)
@@ -289,7 +317,7 @@ def rename_files_in_destination(folder):
             move_or_rename_file(current_full_path, new_full_path, logger)
 
         # Add the name as the Title in the EXIF data for pictures or videos if it was not extracted from the filename
-        if new_full_path and name and not from_fileName:
+        if new_full_path and name and not from_fileName and not DATETIME.search(name):
             if add_exif_data(new_full_path, 'Title', name, logger):
                 log_info(logger, f"Added \"{name}\" to \"Title\" on \"{new_full_path}\".")
 

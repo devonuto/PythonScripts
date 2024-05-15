@@ -37,7 +37,8 @@ def add_exif_data(file_path, exif_tag, exif_data, logger, progress_bar=None):
     """
     try:
         # Define the command to run exiftool and parse with awk
-        cmd = f'exiftool -overwrite_original -{exif_tag}="{exif_data}" "{file_path}"'
+        exiftool_path = get_exiftool_path()
+        cmd = f'{exiftool_path} -overwrite_original -{exif_tag}="{exif_data}" "{file_path}"'
         # Execute the command
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
         # Check if the command was successful
@@ -49,6 +50,23 @@ def add_exif_data(file_path, exif_tag, exif_data, logger, progress_bar=None):
     except Exception as e:
         log_error(logger, f"Error adding {exif_tag} EXIF data to \"{file_path}\":", e, progress_bar)
         return False
+
+
+def check_exiftool():
+    try:
+        exiftool_path = get_exiftool_path()
+        # Attempt to run 'exiftool -ver' to get the version
+        result = subprocess.run([exiftool_path, '-ver'], capture_output=True, text=True, check=True)
+        # If successful, print the version and return True
+        print(f"ExifTool is available, version: {result.stdout.strip()}")
+        return True
+    except subprocess.CalledProcessError as e:
+        # Handle cases where exiftool is not functional
+        print("Failed to run ExifTool:", e)
+    except FileNotFoundError:
+        # Handle the case where exiftool is not found in the system path
+        print("ExifTool is not installed or not found in the system path.")
+    return False
 
 def check_requirements():
     """
@@ -206,6 +224,15 @@ def get_date_object(date_str):
     # Parse the date part
     return datetime.strptime(sanitized_date_part, date_format)
 
+def get_exiftool_path():
+    # Check if running on Windows
+    if sys.platform.startswith('win'):
+        # Windows specific path, adjust as necessary
+        return r"exiftool"
+    else:
+        # Linux and other unix-like OSs
+        return "/usr/share/applications/ExifTool/exiftool"
+
 def is_desired_media_file_format(filename):
     return bool(DESIRED_FORMAT.match(filename))
 
@@ -260,8 +287,9 @@ def get_exif_data(file_path, exif_tag, logger, progress_bar=None):
     - Exception: Raises and logs an exception if there is an error in executing the exiftool command or processing the output.
     """
     try:
-        cmd = ['exiftool', f'-{exif_tag}', file_path]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        exiftool_path = get_exiftool_path()        
+        cmd = f'{exiftool_path} -{exif_tag} {file_path}'
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
 
         if result.returncode == 0:
             # Assuming the output is "Tag Name: Value"
