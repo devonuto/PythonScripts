@@ -50,7 +50,6 @@ def get_configured_vpns():
 
 # Function to connect to a VPN
 def connect_to_vpn(vpn_name):
-    logger.info(f"Connecting to VPN: {vpn_name}")
     # Create reconnect command file
     execute_command(f"(echo conf_name={vpn_name} && echo proto=openvpn) > /usr/syno/etc/synovpnclient/vpnc_connecting")
 
@@ -70,16 +69,15 @@ def connect_to_vpn(vpn_name):
         logger.error(msg)
         sys.exit(1)
 
-    logger.info(f"Connected to VPN: {vpn_name}")
-
 def main():
     try:
-        recommended_servers = get_recommended_servers()
         configured_vpns = get_configured_vpns()
-
         if not configured_vpns:
             logger.warning("No VPNs configured on NAS.")
             return
+
+        # Get recommended servers
+        recommended_servers = get_recommended_servers()
 
         # Normalize server names to match the format of configured VPNs
         normalized_recommended_servers = [server.replace('.', '_') for server in recommended_servers]
