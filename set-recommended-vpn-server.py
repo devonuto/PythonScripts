@@ -5,6 +5,7 @@ import time
 import sys
 import json
 import os
+from datetime import datetime
 
 # Set up logging
 from logger_config import setup_custom_logger
@@ -103,31 +104,50 @@ def main():
         logger.error(f"An uncaught error occurred: {e}")
         sys.exit(1)
 
-def track_server_usage(normalized_recommended_servers):
+import os
+import json
+from datetime import datetime
+
+def track_server_usage(recommended_servers):
     # Return if no recommended servers are provided
-    if not normalized_recommended_servers:
+    if not recommended_servers:
         return
     
     # Define the path for the JSON file where server counts are stored
     file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vpn-recommended-servers.json')
     
+    # Define the minimum date
+    min_date = "2000-01-01T00:00:00"
+
     # Load existing server usage data from the file if it exists
     if os.path.exists(file_path):
         with open(file_path, 'r') as file:
             server_usage = json.load(file)
+            # Ensure each server has a valid last recommended date
+            for server in server_usage:
+                if 'last recommended' not in server_usage[server] or not server_usage[server]['last recommended']:
+                    server_usage[server]['last recommended'] = min_date
     else:
         server_usage = {}
     
-    # Update the count for each recommended server
-    for server in normalized_recommended_servers:
+    # Get the current date in ISO format
+    current_date = datetime.now().isoformat()
+    
+    # Update the count and last recommended date for each recommended server
+    for server in recommended_servers:
         if server in server_usage:
-            server_usage[server] += 1
+            server_usage[server]['count'] += 1
         else:
-            server_usage[server] = 1
+            server_usage[server] = {'count': 1}
+        server_usage[server]['last recommended'] = current_date
 
-    # Save the updated server usage data back to the file
+    # Sort the server_usage dictionary by count in descending order
+    sorted_server_usage = {k: v for k, v in sorted(server_usage.items(), key=lambda item: item[1]['count'], reverse=True)}
+
+    # Save the updated and sorted server usage data back to the file
     with open(file_path, 'w') as file:
-        json.dump(server_usage, file, indent=4)        
+        json.dump(sorted_server_usage, file, indent=4)
+
 
 if __name__ == "__main__":
     main()
