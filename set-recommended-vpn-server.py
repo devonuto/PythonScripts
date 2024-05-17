@@ -3,6 +3,8 @@ import subprocess
 import re
 import time
 import sys
+import json
+import os
 
 # Set up logging
 from logger_config import setup_custom_logger
@@ -44,8 +46,7 @@ def get_configured_vpns():
         if match_name:
             vpn_name = match_name.group(1)
             vpns.append(vpn_name)
-
-    logger.info(f"Configured VPNs: {vpns}")
+    
     return vpns
 
 # Function to connect to a VPN
@@ -82,9 +83,10 @@ def main():
         # Normalize server names to match the format of configured VPNs
         normalized_recommended_servers = [server.replace('.', '_') for server in recommended_servers]
 
+        track_server_usage(normalized_recommended_servers)
+
         # Find the highest recommended server that is configured
-        for server in normalized_recommended_servers:
-            logger.info(f"Checking if {server} is configured on the NAS")
+        for server in normalized_recommended_servers:            
             for vpn_name in configured_vpns:
                 # Check if the server is configured
                 if re.search(server, vpn_name, re.IGNORECASE):
@@ -92,11 +94,40 @@ def main():
                     connect_to_vpn(vpn_name)
                     logger.info(f"Successfully connected to {server}")
                     return
+            
+            # Log warning if server is not configured
+            logger.warning(f"{server} is not configured on the NAS")
 
-        logger.warning("No recommended servers are configured on the NAS: {normalized_recommended_servers}")
+        logger.warning("No recommended servers are configured on the NAS.")
     except Exception as e:
         logger.error(f"An uncaught error occurred: {e}")
         sys.exit(1)
+
+def track_server_usage(normalized_recommended_servers):
+    # Return if no recommended servers are provided
+    if not normalized_recommended_servers:
+        return
+    
+    # Define the path for the JSON file where server counts are stored
+    file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vpn-recommended-servers.json')
+    
+    # Load existing server usage data from the file if it exists
+    if os.path.exists(file_path):
+        with open(file_path, 'r') as file:
+            server_usage = json.load(file)
+    else:
+        server_usage = {}
+    
+    # Update the count for each recommended server
+    for server in normalized_recommended_servers:
+        if server in server_usage:
+            server_usage[server] += 1
+        else:
+            server_usage[server] = 1
+
+    # Save the updated server usage data back to the file
+    with open(file_path, 'w') as file:
+        json.dump(server_usage, file, indent=4)        
 
 if __name__ == "__main__":
     main()
