@@ -141,8 +141,8 @@ def track_server_usage(recommended_servers):
             server_usage[server] = {'count': 1}
         server_usage[server]['last recommended'] = current_date
 
-    # Sort the server_usage dictionary by count in descending order
-    sorted_server_usage = {k: v for k, v in sorted(server_usage.items(), key=lambda item: item[1]['count'], reverse=True)}
+    # Sort the server_usage dictionary by count in descending order and then by last recommended date in descending order
+    sorted_server_usage = {k: v for k, v in sorted(server_usage.items(), key=lambda item: (item[1]['count'], item[1]['last recommended']), reverse=True)}
 
     # Save the updated and sorted server usage data back to the file
     with open(file_path, 'w') as file:
