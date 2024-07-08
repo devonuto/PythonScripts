@@ -10,9 +10,9 @@ from importlib import metadata
 
 DATETIME = re.compile(r'^\d{4}[\-\:\.]\d{2}[\-\:\.]\d{2}\s\d{2}[\-\:\.]\d{2}[\-\:\.]\d{2}([\-\:\.]\d{3})?', re.IGNORECASE)
 DESIRED_FORMAT = re.compile(r'^(\d{4}-\d{2}-\d{2} \d{2}\.\d{2}\.\d{2}\.\d{3})', re.IGNORECASE)
-PHOTO_EXTENSIONS = {'.png', '.jpg', '.jpeg' }
-VIDEO_EXTENSIONS = {'.m4v', '.mov', '.mp4', '.avi', '.mkv', '.wmv', '.flv', '.webm'}
-
+PHOTO_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif' }
+VIDEO_EXTENSIONS = {'.m4v', '.mov', '.mp4', '.mkv', '.wmv', '.webm'}
+MEDIA_EXTENSIONS = PHOTO_EXTENSIONS.union(VIDEO_EXTENSIONS)
 
 # Helper function to add EXIF data to the file
 def add_exif_data(file_path, exif_tag, exif_data, logger, progress_bar=None):
@@ -185,10 +185,16 @@ def delete_empty_folders(directory, logger, progress_bar=None):
     - Deletion is attempted only on directories that are completely empty (no files or subdirectories).
     """
     for dirpath, dirnames, filenames in os.walk(directory, topdown=False):
+        dirnames[:] = [d for d in dirnames 
+                       if not d.startswith('@') 
+                       and not d.startswith('.') 
+                       and not d.startswith('$') 
+                       and not d.startswith('~')]
+        
         # Check if directory is empty
         if not dirnames and not filenames:
             try:
-                os.rmdir(dirpath)
+                shutil.rmtree(dirpath, ignore_errors=True)
                 log_info(logger, f"Deleted empty folder: {dirpath}", progress_bar)
             except OSError as e:
                 log_error(logger, f"Failed to delete {dirpath}:", e, progress_bar)
@@ -288,7 +294,7 @@ def get_exif_data(file_path, exif_tag, logger, progress_bar=None):
     """
     try:
         exiftool_path = get_exiftool_path()        
-        cmd = f'{exiftool_path} -{exif_tag} {file_path}'
+        cmd = f'{exiftool_path} -{exif_tag} "{file_path}"'
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
 
         if result.returncode == 0:
@@ -379,7 +385,7 @@ def get_file_count(directory, filter, logger, progress_bar=None):
         return total_files
 
 # Get a unique filename by appending an index to the filename if a conflict exists
-def get_unique_filename(destination_item):    
+def get_unique_filename(source_item, destination_item):    
     """
     Generates a unique filename by appending an index if the provided filename already exists.
 
@@ -397,6 +403,11 @@ def get_unique_filename(destination_item):
     - Input: '/path/to/file.txt'
     - Output: '/path/to/file (1).txt'  # if '/path/to/file.txt' already exists
     """
+
+    # Return the original name if there is no conflict
+    if (source_item == destination_item):
+        return destination_item
+
     if not os.path.exists(destination_item):
         return destination_item  # Return the original name if there is no conflict
 
@@ -406,29 +417,33 @@ def get_unique_filename(destination_item):
     new_destination_item = f"{base} ({index}){extension}"
     # Increment the index until a unique filename is found
     while os.path.exists(new_destination_item):
+        # Return the new destination name if there is no conflict
+        if (source_item == new_destination_item):
+            return new_destination_item
+        
         index += 1
-        new_destination_item = f"{base} ({index}){extension}"
+        new_destination_item = f"{base} ({index}){extension}"        
 
     return new_destination_item
 
 def has_been_processed(conn, table, columns, value, logger, progress_bar=None):
     """
-    Checks if a given value has already been processed by searching for it in specified columns of a database table.
+    Checks if a given value or set of values have already been processed by searching for them in specified columns of a database table.
 
-    This function queries a SQLite database to determine if a specific value exists in any of several specified columns
+    This function queries a SQLite database to determine if a specific value or a set of values exist in specified columns
     of a given table. It constructs a dynamic SQL query using the column names provided, searching for the value using an OR
-    condition across those columns.
+    condition across those columns for a single value, or an AND condition for multiple values corresponding to each column.
 
     Args:
     - conn: The SQLite database connection object.
     - table (str): The name of the table to query.
     - columns (str or list): The column or list of columns to check for the value.
-    - value: The value to check for in the specified columns.
+    - value: The value or list of values to check in the specified columns. If a list, must match the number of columns.
     - logger: A logging object used for logging information and errors.
     - progress_bar (optional): An optional progress bar object for visual progress feedback.
 
     Returns:
-    - bool: True if the value is found in any of the specified columns, False otherwise.
+    - bool: True if the value(s) is found in the specified columns, False otherwise.
 
     Raises:
     - Exception: Logs and raises any exceptions encountered during database access or query execution.
@@ -441,16 +456,24 @@ def has_been_processed(conn, table, columns, value, logger, progress_bar=None):
         if isinstance(columns, str):
             columns = [columns]  # Convert single string to list
 
-        # Construct the WHERE clause dynamically to compare multiple columns using OR
-        where_clause = ' OR '.join([f"{col} = ?" for col in columns])
-        query = f"SELECT 1 FROM {table} WHERE {where_clause}"
-        params = tuple([value] * len(columns))
+        if isinstance(value, list) and len(value) == len(columns):
+            # Construct the WHERE clause dynamically for multiple values using AND
+            where_clause = ' AND '.join([f"{col} = ?" for col in columns])
+            params = tuple(value)
+        elif isinstance(value, list) and len(value) != len(columns):
+            log_error(logger, "The number of values does not match the number of columns.", progress_bar=progress_bar)
+            return False
+        else:
+            # Construct the WHERE clause dynamically to compare multiple columns using OR
+            where_clause = ' OR '.join([f"{col} = ?" for col in columns])
+            params = tuple([value] * len(columns))
 
+        query = f"SELECT 1 FROM {table} WHERE {where_clause}"
         c.execute(query, params)
         exists = c.fetchone() is not None
         return exists
     except Exception as e:
-        log_error(logger, f"Error checking if \"{value}\" has been processed in any of {columns}:", e, progress_bar)        
+        log_error(logger, f"Error checking if \"{value}\" has been processed in any of {columns}:", e, progress_bar)
         return False
     
 def move_or_rename_file(source, destination, logger, progress_bar=None):
@@ -483,7 +506,7 @@ def move_or_rename_file(source, destination, logger, progress_bar=None):
             os.makedirs(destination_folder)
 
         # Get a unique filename if a conflict exists
-        destination = get_unique_filename(destination)
+        destination = get_unique_filename(source, destination)
 
         os.rename(source, destination)
         # Log moved if file name is same, but destination folder is different
@@ -504,6 +527,27 @@ def move_or_rename_file(source, destination, logger, progress_bar=None):
     except Exception as e:
         log_error(logger, f"Error moving \"{source}\" to \"{destination}\":", e, progress_bar)
         return None
+
+def log_debug(logger, message, progress_bar=None):
+    """
+    Logs an informational message and optionally updates a progress bar with the message.
+
+    This function logs a given message using the provided logger and, if a progress bar is provided, 
+    updates the progress bar's description with the same message. This is useful for providing visual 
+    feedback to the user along with logging the progress or status.
+
+    Args:
+    - logger: The logging object used to log the message.
+    - message (str): The message to be logged.
+    - progress_bar (optional): A progress bar object that can be updated with the message (optional).
+
+    Note:
+    - This function does not return a value; its purpose is purely to log information and update UI elements.
+    """
+    if progress_bar:
+        progress_bar.set_description(message)
+    if logger:
+        logger.debug(message)
 
 def log_info(logger, message, progress_bar=None):
     """
@@ -629,6 +673,8 @@ def setup_database(database_name, sql, logger, progress_bar=None):
     - Exception: Captures and logs any exceptions that occur, then closes the connection and exits the application.
     """
     try:
+        database_dir = os.path.dirname(os.path.abspath(__file__))
+        database_name = os.path.join(database_dir, database_name)
         conn = sqlite3.connect(database_name)
         if not conn:
             raise Exception(f"Error connecting to database: {database_name}")
