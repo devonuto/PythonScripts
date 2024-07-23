@@ -8,7 +8,7 @@ class SynologyDownloadStation:
         self.user_id = user_id
         self.password = password
         self.session_id = None        
-        self.four_weeks_ago = time.time() - 4 * 7 * 24 * 60 * 60  # Four weeks in seconds
+        self.two_weeks_ago = time.time() - 2 * 7 * 24 * 60 * 60  # Two weeks in seconds
 
     def log_into_download_station(self):
         print("Logging into Download Station")
@@ -49,7 +49,7 @@ class SynologyDownloadStation:
         for task in tasks:
             create_time = task['additional']['detail'].get('create_time')
             print(f"Created: {create_time}. \"{task['title']}\", Status: {task['status']}")
-            if task['status'] == 'error' or (create_time is not None and create_time < self.four_weeks_ago):
+            if task['status'] == 'error' or (create_time is not None and create_time < self.two_weeks_ago):
                 if self.delete_download_task(task['id']):
                     print(f"Deleted task ID: {task['id']} for \"{task['title']}\"")
                 else:
