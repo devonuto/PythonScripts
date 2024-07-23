@@ -11,6 +11,7 @@ class SynologyDownloadStation:
         self.four_weeks_ago = time.time() - 4 * 7 * 24 * 60 * 60  # Four weeks in seconds
 
     def log_into_download_station(self):
+        print("Logging into Download Station")
         url = f"http://{self.nas_ip}/webapi/auth.cgi?api=SYNO.API.Auth&version=3&method=login&account={self.user_id}&passwd={self.password}&session=DownloadStation&format=cookie"
         response = requests.get(url)
         data = response.json()
@@ -21,11 +22,13 @@ class SynologyDownloadStation:
 
     def log_out_of_download_station(self):
         if self.session_id:
+            print("Logging out")
             url = f"http://{self.nas_ip}/webapi/auth.cgi?api=SYNO.API.Auth&version=1&method=logout&session=DownloadStation"
             requests.get(url, cookies={'id': self.session_id})
             self.session_id = None
 
     def get_download_tasks(self):
+        print("Getting download tasks")
         url = f"http://{self.nas_ip}/webapi/DownloadStation/task.cgi?api=SYNO.DownloadStation.Task&version=1&method=list&additional=detail,file"
         response = requests.get(url, cookies={'id': self.session_id})
         data = response.json()
@@ -45,11 +48,12 @@ class SynologyDownloadStation:
         tasks_to_keep = []
         for task in tasks:
             create_time = task['additional']['detail'].get('create_time')
+            print(f"Created: {create_time}. \"{task['title']}\", Status: {task['status']}")
             if task['status'] == 'error' or (create_time is not None and create_time < self.four_weeks_ago):
                 if self.delete_download_task(task['id']):
                     print(f"Deleted task ID: {task['id']} for \"{task['title']}\"")
                 else:
-                    print(f"Failed to delete task ID: {task['id']}")
+                    raise Exception(f"Failed to delete task ID: {task['id']}")
             else:
                 tasks_to_keep.append(task)
         return tasks_to_keep
