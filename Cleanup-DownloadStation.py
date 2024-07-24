@@ -48,8 +48,13 @@ class SynologyDownloadStation:
         tasks_to_keep = []
         for task in tasks:
             create_time = task['additional']['detail'].get('create_time')
-            print(f"Created: {create_time}. \"{task['title']}\", Status: {task['status']}")
-            if task['status'] == 'error' or (create_time is not None and create_time < self.two_weeks_ago):
+            transfer = task['additional'].get('transfer')
+            if transfer is not None:
+                downloaded = transfer.get('size_downloaded') or 0
+            else:
+                downloaded = 0
+            print(f"Created: {create_time}. \"{task['title']}\", Status: {task['status']}. Downloaded: {downloaded}")
+            if task['status'] == 'error' or (create_time is not None and create_time < self.two_weeks_ago and downloaded == 0):
                 if self.delete_download_task(task['id']):
                     print(f"Deleted task ID: {task['id']} for \"{task['title']}\"")
                 else:
