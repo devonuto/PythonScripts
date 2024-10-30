@@ -7,6 +7,7 @@ from PIL import Image
 from shared_methods import move_or_rename_file, PHOTO_EXTENSIONS
 
 logger = setup_custom_logger('Alert-Custom-Images')
+script_directory = os.path.dirname(os.path.abspath(__file__))
 
 def is_corrupted(filepath, max_attempts=3):
     attempt = 0

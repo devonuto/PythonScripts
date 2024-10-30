@@ -9,8 +9,8 @@ from shared_methods import (add_exif_data, move_or_rename_file, get_exif_datetim
                             MEDIA_EXTENSIONS, PHOTO_EXTENSIONS, VIDEO_EXTENSIONS)
 
 logger = setup_custom_logger('Sort-N-Rename-Media')
-
-DATABASE_NAME = 'sort_n_rename_media.db'
+script_directory = os.path.dirname(os.path.abspath(__file__))
+DATABASE_NAME = os.path.join(script_directory, 'sort_n_rename_media.db')
 DATABASE_TABLE = 'files'
 DATABASE_PRIMARY = 'file_name'
 DATABASE_COLUMN2 = 'previous_name'
@@ -66,6 +66,7 @@ def process_files(start_directory):
                         [DATABASE_PRIMARY, DATABASE_COLUMN2], 
                         [os.path.basename(file_path), os.path.basename(file_path)],
                         logger, 
+                        [DATABASE_PRIMARY, DATABASE_COLUMN2],
                         progress_bar)
                         continue
                     from_fileName = True
@@ -88,6 +89,7 @@ def process_files(start_directory):
                         [DATABASE_PRIMARY, DATABASE_COLUMN2], 
                         [os.path.basename(new_file_path), os.path.basename(file_path)],
                         logger, 
+                        [DATABASE_PRIMARY, DATABASE_COLUMN2],
                         progress_bar)
 
             # Add the name as the Title in the EXIF data for pictures or videos if it was not extracted from the filename

@@ -614,39 +614,49 @@ def log_warning(logger, message, progress_bar=None):
     if logger:
         logger.warning(message)
 
-def record_db_update(conn, table_name, columns, values, logger, progress_bar=None):
-    """
-    Records an update to a specified table in the database by inserting a new row.
+import sys
 
-    This function prepares and executes an SQL INSERT statement to add a new row into the specified table.
-    It commits the transaction to ensure data consistency. If an error occurs during the database operation,
-    the error is logged, and the program will exit with an error status.
+def record_db_update(conn, table_name: str, columns: list, values: list, logger, unique_columns: list, progress_bar=None):
+    """
+    Records an update to a specified table in the database by inserting a new row
+    or updating an existing row if it already exists.
 
     Args:
     - conn: The database connection object.
-    - table_name (str): The name of the table where the new row will be inserted.
+    - table_name (str): The name of the table where the new row will be inserted/updated.
     - columns (list): A list of column names into which the values will be inserted.
     - values (list): A list of values corresponding to the columns that will be inserted.
     - logger: A logging object used for logging information and errors.
+    - unique_columns (list): A list of unique column names for conflict resolution.
     - progress_bar (optional): A progress bar object for visual feedback (optional).
 
     Raises:
     - Exception: Captures and logs any exceptions that occur during the database update, then exits the program.
     """
     try:
-        # Connect to the specified SQLite dat
-        c = conn.cursor()
+        with conn.cursor() as c:
+            # Prepare the SQL query
+            columns_str = ', '.join(columns)
+            placeholders = ', '.join(['?' for _ in values])  # Create placeholders for values
+            
+            # Update clause
+            update_str = ', '.join([f"{col} = ?" for col in columns])  
+            
+            # Prepare the ON CONFLICT clause for composite primary key
+            unique_columns_str = ', '.join(unique_columns)
+            
+            sql = f'''
+                INSERT INTO {table_name} ({columns_str}) 
+                VALUES ({placeholders}) 
+                ON CONFLICT({unique_columns_str}) 
+                DO UPDATE SET {update_str}
+            '''
 
-        # Prepare the SQL query
-        columns_str = ', '.join(columns)
-        placeholders = ', '.join(['?' for _ in values])  # Create placeholders based on the number of values
-        sql = f'INSERT INTO {table_name} ({columns_str}) VALUES ({placeholders})'
+            # Execute the SQL command
+            c.execute(sql, values + values)  # Pass values for both insert and update
 
-        # Execute the SQL command
-        c.execute(sql, values)
-
-        # Commit the changes and close the connection
-        conn.commit()
+            # Commit the changes
+            conn.commit()
     except Exception as e:
         log_error(logger, f"Error recording update in database:", e, progress_bar)
         sys.exit(1)

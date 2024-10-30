@@ -8,7 +8,8 @@ from shared_methods import (get_exif_data, setup_database, has_been_processed, m
                             record_db_update, get_file_count, log_info, log_error, PHOTO_EXTENSIONS)
 
 logger = setup_custom_logger('Find-PNGs-as-JPGs')
-DATABASE_NAME = 'mislabled_images.db'
+script_directory = os.path.dirname(os.path.abspath(__file__))
+DATABASE_NAME = os.path.join(script_directory, 'mislabled_images.db')
 DATABASE_TABLE = 'file_updates'
 DATABASE_PRIMARY = 'file_name'
 DATABASE_COLUMN2 = 'extension'
@@ -62,6 +63,7 @@ def process_images(start_directory):
                         [DATABASE_PRIMARY, DATABASE_COLUMN2, DATABASE_COLUMN3, DATABASE_COLUMN4], 
                         [os.path.basename(file_path), file_extension, file_type, os.path.basename(new_file_path)], 
                         logger, 
+                        [DATABASE_PRIMARY],
                         progress_bar)
 
             else:
@@ -72,6 +74,7 @@ def process_images(start_directory):
                     [DATABASE_PRIMARY, DATABASE_COLUMN2, DATABASE_COLUMN3, DATABASE_COLUMN4], 
                     [os.path.basename(file_path), file_extension, file_type, os.path.basename(file_path)], 
                     logger,
+                    [DATABASE_PRIMARY],
                     progress_bar)
             progress_bar.refresh()
             progress_bar.update(1)

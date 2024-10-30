@@ -10,8 +10,8 @@ from shared_methods import (get_exif_data, add_exif_data, setup_database, has_be
                             check_requirements, DATETIME, PHOTO_EXTENSIONS)
 
 logger = setup_custom_logger('Add-Missing-EXIF')
-
-DATABASE_NAME = 'exif_updates.db'
+script_directory = os.path.dirname(os.path.abspath(__file__))
+DATABASE_NAME = os.path.join(script_directory, 'exif_updates.db')
 DATABASE_TABLE = 'file_updates'
 DATABASE_PRIMARY = 'file_name'
 DATABASE_COLUMN2 = 'exif_tag'
@@ -62,7 +62,7 @@ def process_images(start_directory):
                         if add_exif_data(file_path, 'DateTimeOriginal', file_name, progress_bar):
                             log_info(logger, f"Updated DateTimeOriginal from \"{exif_date}\" to \"{file_name}\" on \"{file_path}\".", progress_bar)
                             record_db_update(CONN, DATABASE_TABLE, [DATABASE_PRIMARY, DATABASE_COLUMN2, DATABASE_COLUMN3], 
-                                             [os.path.basename(file_path), 'DateTimeOriginal', file_name], logger, progress_bar)
+                                             [os.path.basename(file_path), 'DateTimeOriginal', file_name], logger, [DATABASE_PRIMARY], progress_bar)
 
                     # Catch exceptions and log them
                     except Exception as e:
@@ -71,7 +71,7 @@ def process_images(start_directory):
                 else:
                     log_info(logger, f"\"{file_path}\" already has correct EXIF data.", progress_bar)
                     record_db_update(CONN, DATABASE_TABLE, [DATABASE_PRIMARY, DATABASE_COLUMN2, DATABASE_COLUMN3], 
-                                     [os.path.basename(file_path), 'DateTimeOriginal', file_name], logger, progress_bar)
+                                     [os.path.basename(file_path), 'DateTimeOriginal', file_name], logger, [DATABASE_PRIMARY], progress_bar)
                 progress_bar.refresh()
             progress_bar.update(1)
     progress_bar.close()    
