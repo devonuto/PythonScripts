@@ -635,32 +635,38 @@ def record_db_update(conn, table_name: str, columns: list, values: list, logger,
     - Exception: Captures and logs any exceptions that occur during the database update, then exits the program.
     """
     try:
-        with conn.cursor() as c:
-            # Prepare the SQL query
-            columns_str = ', '.join(columns)
-            placeholders = ', '.join(['?' for _ in values])  # Create placeholders for values
-            
-            # Update clause
-            update_str = ', '.join([f"{col} = ?" for col in columns])  
-            
-            # Prepare the ON CONFLICT clause for composite primary key
-            unique_columns_str = ', '.join(unique_columns)
-            
-            sql = f'''
-                INSERT INTO {table_name} ({columns_str}) 
-                VALUES ({placeholders}) 
-                ON CONFLICT({unique_columns_str}) 
-                DO UPDATE SET {update_str}
-            '''
+        # Create a cursor object
+        c = conn.cursor()
 
-            # Execute the SQL command
-            c.execute(sql, values + values)  # Pass values for both insert and update
+        # Prepare the SQL query
+        columns_str = ', '.join(columns)
+        placeholders = ', '.join(['?' for _ in values])  # Create placeholders for values
+        
+        # Update clause
+        update_str = ', '.join([f"{col} = ?" for col in columns])  
+        
+        # Prepare the ON CONFLICT clause for composite primary key
+        unique_columns_str = ', '.join(unique_columns)
+        
+        sql = f'''
+            INSERT INTO {table_name} ({columns_str}) 
+            VALUES ({placeholders}) 
+            ON CONFLICT({unique_columns_str}) 
+            DO UPDATE SET {update_str}
+        '''
 
-            # Commit the changes
-            conn.commit()
+        # Execute the SQL command
+        c.execute(sql, values + values)  # Pass values for both insert and update
+
+        # Commit the changes
+        conn.commit()
+        
     except Exception as e:
         log_error(logger, f"Error recording update in database:", e, progress_bar)
         sys.exit(1)
+    finally:
+        # Ensure the cursor is closed
+        c.close()
 
 # Helper function to setup the database, and connection
 def setup_database(database_name, sql, logger, progress_bar=None):
