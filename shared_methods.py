@@ -496,17 +496,18 @@ def move_or_rename_file(source, destination, logger, progress_bar=None):
     Raises:
     - Exception: Captures and logs any exceptions that occur during the file move or rename process.
     """
-    if source == destination:
-        log_info(logger, f"Source and destination are the same: \"{source}\".", progress_bar)
-        return None
     try:
+        # Get a unique filename if a conflict exists
+        destination = get_unique_filename(source, destination)
+
+        if source == destination:
+            log_info(logger, f"Source and destination are the same: \"{source}\".", progress_bar)
+            return None
+        
         # Check if the destination folder exists, if not, create it
         destination_folder = os.path.dirname(destination)
         if not os.path.exists(destination_folder):
             os.makedirs(destination_folder)
-
-        # Get a unique filename if a conflict exists
-        destination = get_unique_filename(source, destination)
 
         os.rename(source, destination)
         # Log moved if file name is same, but destination folder is different
