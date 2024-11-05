@@ -1,3 +1,4 @@
+import glob
 import os
 import re
 import shutil
@@ -233,7 +234,10 @@ def get_exiftool_path():
         return r"exiftool"
     else:
         # Linux and other unix-like OSs
-        return "/Volume2/Media/Synology/Tools/Image-ExifTool-*/exiftool"
+        # Adjust base path to where ExifTool is located
+        base_path = "/Volume2/Media/Synology/Tools/Image-ExifTool-*"
+        # Use glob to find the exact path
+        return glob.glob(os.path.join(base_path, 'exiftool'))
 
 def is_desired_media_file_format(filename):
     return bool(DESIRED_FORMAT.match(filename))
