@@ -33,11 +33,15 @@ def process_files(start_directory):
         if dirpath == start_directory:
             dirnames[:] = [d for d in dirnames if not d.isdigit() or len(d) != 4]
         
+        # Skip directories starting with special characters
         dirnames[:] = [d for d in dirnames 
                     if not d.startswith('@') 
                     and not d.startswith('.') 
                     and not d.startswith('$') 
                     and not d.startswith('~')]
+        
+        # Filter out non-media files
+        filenames[:] = [f for f in filenames if f.lower().endswith(MEDIA_EXTENSIONS)]
 
         for file in filenames:
             file_path = os.path.join(dirpath, file)
