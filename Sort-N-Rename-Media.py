@@ -36,9 +36,6 @@ def process_files(start_directory):
                     and not d.startswith('$') 
                     and not d.startswith('~')]
         
-        # Filter out non-media files
-        filenames[:] = [f for f in filenames if f.lower().endswith(MEDIA_EXTENSIONS)]
-
         for file in filenames:
             file_path = os.path.join(dirpath, file)
             file_name, extension = os.path.splitext(file)        
@@ -50,6 +47,10 @@ def process_files(start_directory):
             # Check if the file is a photo or video
             photo = extension.lower() in PHOTO_EXTENSIONS
             video = extension.lower() in VIDEO_EXTENSIONS
+
+            if (not photo and not video):
+                progress_bar.update(1)
+                continue
 
             from_fileName = False
             new_file_path = None
