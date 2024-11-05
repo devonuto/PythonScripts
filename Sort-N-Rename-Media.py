@@ -37,7 +37,9 @@ def process_files(start_directory):
                     and not d.startswith('~')]
         
         # Filter out non-media files
-        filenames = [f for f in filenames if '.' + f.split('.')[-1].lower() in MEDIA_EXTENSIONS]
+        filenames = [f for f in filenames 
+                    if not f.startswith('.') 
+                    and os.path.splitext(f)[1].lower() in MEDIA_EXTENSIONS]
 
         for file in filenames:
             file_path = os.path.join(dirpath, file)
