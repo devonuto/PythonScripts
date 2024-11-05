@@ -29,10 +29,6 @@ def process_files(start_directory):
     progress_bar = tqdm(total=total_files, desc='Processing Files', unit='files')
 
     for dirpath, dirnames, filenames in os.walk(start_directory):
-        # Skip "year" directories directly in the start_directory
-        if dirpath == start_directory:
-            dirnames[:] = [d for d in dirnames if not d.isdigit() or len(d) != 4]
-        
         # Skip directories starting with special characters
         dirnames[:] = [d for d in dirnames 
                     if not d.startswith('@') 
