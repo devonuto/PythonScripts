@@ -16,7 +16,6 @@ DATABASE_PRIMARY = 'file_name'
 DATABASE_COLUMN2 = 'previous_name'
 CONN = None
 
-# Regular expression patterns for date matching in filenames
 NAMED_DATE_PATTERN = re.compile(r'^(\w{3}_)?(?P<year>\d{4})[\.\-:]?(?P<month>\d{2})[\.\-:]?(?P<day>\d{2})[\s\-_](?P<hour>\d{2})[\.\-:]?(?P<minute>\d{2})[\.\-:]?(?P<second>\d{2})(?:[\.\-:]?(?P<microseconds>\d{0,9}))?(?P<offset>\+\d{2}[\.\-:]\d{2})?',re.IGNORECASE)
 DATETIME_ORIGINAL = 'DateTimeOriginal' 
 ORIGINAL_SUBSECONDS = 'SubSecTimeOriginal'
@@ -76,11 +75,13 @@ def process_files(start_directory):
             else:
                 file_path, new_file_path = create_new_filename_from_exif_data(dirpath, file_path, extension, photo, video, progress_bar)
 
-            # Skip files with invalid dates
             if new_file_path and os.path.basename(new_file_path).startswith("0000-00-00"):                
                 continue
 
             if file_path and new_file_path:
+                if not os.path.exists(os.path.dirname(new_file_path)):
+                    os.makedirs(os.path.dirname(new_file_path))
+                
                 new_file_path = move_or_rename_file(file_path, new_file_path, logger, progress_bar)
                 if new_file_path and not has_been_processed(CONN, DATABASE_TABLE, [DATABASE_PRIMARY, DATABASE_COLUMN2], [os.path.basename(new_file_path), os.path.basename(file_path)], logger):                    
                     record_db_update(
@@ -197,43 +198,19 @@ def create_new_filename_from_exif_data(folder, filename, extension, photo, video
     log_warning(logger, f"Failed to extract EXIF datetime from \"{filename}\"", progress_bar)
     return None, None
 
-# Get new destination path based on year and month
 def get_new_destination(start_directory, year, month, new_filename):
-    """
-    Construct a new file path based on year and month criteria relative to the start_directory.
-
-    Args:
-    - start_directory (str): The base directory from which to calculate the new path.
-    - year (str): The year component for the new path.
-    - month (str): The month component for the new path.
-    - new_filename (str): The filename to append to the constructed path.
-
-    Returns:
-    - str: The constructed full path to the new file.
-    """
-
     # Validate input parameters
-    if not all([year.isdigit() and len(year) == 4, month.isdigit() and len(month) in (1, 2), new_filename]):
+    if not (year.isdigit() and len(year) == 4 and month.isdigit() and 1 <= int(month) <= 12 and new_filename):
         raise ValueError("Invalid year, month, or filename provided.")
-
-    base_name = os.path.basename(start_directory)
     
-    if base_name == year:
-        new_file_path = os.path.join(start_directory, month, new_filename)
-    elif base_name == month:
-        # This condition seems suspicious because 'month' is unlikely to be the root directory's name alone.
-        # Consider revising this based on actual requirements or expected directory structure.
-        new_file_path = os.path.join(start_directory, new_filename)
-    elif re.match(r'\d{4}', base_name):
-        # Assuming the base_name is a year, go up one level and create the expected structure
-        parent_dir = os.path.dirname(start_directory)
-        new_file_path = os.path.join(parent_dir, year, month, new_filename)
-    else:
-        # Default case: append year and month to the current start_directory
-        new_file_path = os.path.join(start_directory, year, month, new_filename)
-
+    # Ensure month is two digits
+    month = month.zfill(2)
+    
+    # Construct the new file path
+    new_file_path = os.path.join(start_directory, year, month, new_filename)
     return new_file_path
-    
+
+
 def format_new_filename(filename, extension):
     """
     Formats a new filename using date and time components extracted from the original filename and appends a specified extension.
@@ -249,6 +226,7 @@ def format_new_filename(filename, extension):
 
     match = NAMED_DATE_PATTERN.match(filename)
     if match:
+        # Get the date and time components from the filename
         year = match.group('year')
         month = match.group('month')
         day = match.group('day')
