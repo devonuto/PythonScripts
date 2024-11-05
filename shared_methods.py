@@ -38,7 +38,7 @@ def add_exif_data(file_path, exif_tag, exif_data, logger, progress_bar=None):
     try:
         # Define the command to run exiftool and parse with awk
         exiftool_path = get_exiftool_path()
-        cmd = f'{exiftool_path} -overwrite_original -{exif_tag}="{exif_data}" "{file_path}"'
+        cmd = f'{"perl " if not sys.platform.startswith("win") else ""}{exiftool_path} -overwrite_original -{exif_tag}="{exif_data}" "{file_path}"'
         # Execute the command
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
         # Check if the command was successful
@@ -56,7 +56,10 @@ def check_exiftool():
     try:
         exiftool_path = get_exiftool_path()
         # Attempt to run 'exiftool -ver' to get the version
-        result = subprocess.run([exiftool_path, '-ver'], capture_output=True, text=True, check=True)
+        if sys.platform.startswith('win'):
+            result = subprocess.run([exiftool_path, '-ver'], capture_output=True, text=True, check=True)
+        else:
+            result = subprocess.run(['perl', exiftool_path, '-ver'], capture_output=True, text=True, check=True)
         # If successful, print the version and return True
         print(f"ExifTool is available, version: {result.stdout.strip()}")
         return True
@@ -75,19 +78,12 @@ def check_requirements():
     Raises:
         Exception: If any of the required tools or packages are missing.
     """
-    # System tools expected to be available (e.g., exiftool)
-    system_tools = ['exiftool']
 
     # Python packages and modules to check (as a dictionary with None if no version check is needed)
     python_packages = {
         'sqlite3': None,  # Standard library module, no version required
         'tqdm': '4.46.0'  # Minimum version requirement for tqdm
     }
-
-    # Check for system tools
-    for tool in system_tools:
-        if not shutil.which(tool):
-            raise Exception(f"Required system tool missing: {tool}")
 
     # Check for Python packages
     for package, required_version in python_packages.items():
@@ -237,7 +233,7 @@ def get_exiftool_path():
         return r"exiftool"
     else:
         # Linux and other unix-like OSs
-        return "/usr/share/applications/ExifTool/exiftool"
+        return "/Volume2/Media/Synology/Tools/Image-ExifTool-*/exiftool"
 
 def is_desired_media_file_format(filename):
     return bool(DESIRED_FORMAT.match(filename))
@@ -294,7 +290,7 @@ def get_exif_data(file_path, exif_tag, logger, progress_bar=None):
     """
     try:
         exiftool_path = get_exiftool_path()        
-        cmd = f'{exiftool_path} -{exif_tag} "{file_path}"'
+        cmd = f'{"perl " if not sys.platform.startswith("win") else ""}{exiftool_path} -{exif_tag} "{file_path}"'
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
 
         if result.returncode == 0:
