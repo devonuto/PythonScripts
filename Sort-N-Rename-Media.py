@@ -29,12 +29,15 @@ def process_files(start_directory):
     progress_bar = tqdm(total=total_files, desc='Processing Files', unit='files')
 
     for dirpath, dirnames, filenames in os.walk(start_directory):
+        # Skip "year" directories directly in the start_directory
+        if dirpath == start_directory:
+            dirnames[:] = [d for d in dirnames if not d.isdigit() or len(d) != 4]
+        
         dirnames[:] = [d for d in dirnames 
-                       if not d.startswith('@') 
-                       and not d.startswith('.') 
-                       and not d.startswith('$') 
-                       and not d.startswith('~')]
-        filenames = [f for f in filenames if '.' + f.split('.')[-1].lower() in MEDIA_EXTENSIONS]
+                    if not d.startswith('@') 
+                    and not d.startswith('.') 
+                    and not d.startswith(')') 
+                    and not d.startswith('~')]
 
         for file in filenames:
             file_path = os.path.join(dirpath, file)
