@@ -36,7 +36,7 @@ def process_files(start_directory):
         dirnames[:] = [d for d in dirnames 
                     if not d.startswith('@') 
                     and not d.startswith('.') 
-                    and not d.startswith(')') 
+                    and not d.startswith('$') 
                     and not d.startswith('~')]
 
         for file in filenames:
