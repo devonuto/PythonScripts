@@ -249,7 +249,6 @@ def format_new_filename(filename, extension):
 
     match = NAMED_DATE_PATTERN.match(filename)
     if match:
-        # Get the date and time components from the filename
         year = match.group('year')
         month = match.group('month')
         day = match.group('day')
