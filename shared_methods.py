@@ -233,11 +233,14 @@ def get_exiftool_path():
         # Windows specific path, adjust as necessary
         return r"exiftool"
     else:
-        # Linux and other unix-like OSs
-        # Adjust base path to where ExifTool is located
-        base_path = "/Volume2/Media/Synology/Tools/Image-ExifTool-*"
+         # Adjust base path to where ExifTool is located
+        base_path = "/volume2/Media/Synology/Tools/Image-ExifTool-*"
         # Use glob to find the exact path
-        return glob.glob(os.path.join(base_path, 'exiftool'))
+        paths = glob.glob(os.path.join(base_path, 'exiftool'))
+        if paths:
+            return paths[0]
+        else:
+            raise FileNotFoundError("ExifTool not found in the specified directory.")
 
 def is_desired_media_file_format(filename):
     return bool(DESIRED_FORMAT.match(filename))
@@ -502,7 +505,7 @@ def move_or_rename_file(source, destination, logger, progress_bar=None):
 
         if source == destination:
             log_info(logger, f"Source and destination are the same: \"{source}\".", progress_bar)
-            return None
+            return source
         
         # Check if the destination folder exists, if not, create it
         destination_folder = os.path.dirname(destination)

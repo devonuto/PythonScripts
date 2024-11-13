@@ -1,7 +1,7 @@
 import os
 import re
 import sys
-import time  # Import the time module for the sleep function
+import time
 from logger_config import setup_custom_logger
 from PIL import Image
 from shared_methods import move_or_rename_file, PHOTO_EXTENSIONS
@@ -13,23 +13,22 @@ def is_corrupted(filepath, max_attempts=3):
     attempt = 0
     while attempt < max_attempts:
         try:
-            # Verify the image
             with Image.open(filepath) as img:
-                img.verify()  # Verify the integrity
-            # Reopen the image for further operations
+                img.verify()
             with Image.open(filepath) as img:
-                img.transpose(Image.FLIP_LEFT_RIGHT)  # Simple operation to force image reading
-            return False  # If no exception, image is OK
+                img.transpose(Image.FLIP_LEFT_RIGHT)
+            return False
         except Exception as e:
             print(f"Attempt {attempt+1}: Error checking {filepath}: {str(e)}")
             attempt += 1
-            time.sleep(1)  # Wait a bit before retrying
-    return True  # If all attempts fail, image is corrupted
+            time.sleep(1)
+    return True
 
 def find_corrupted_images(directory):
     corrupted_files = []
     for root, dirs, files in os.walk(directory):
-        dirs[:] = [d for d in dirs if re.match(r'^[a-zA-Z0-9]' and not d == corrupted_dir, d)]
+        # Corrected the list comprehension
+        dirs[:] = [d for d in dirs if re.match(r'^[a-zA-Z0-9]', d) and d != corrupted_dir]
         files = [f for f in files if '.' + f.split('.')[-1].lower() in PHOTO_EXTENSIONS]
         for filename in files:
             _, extension = os.path.splitext(filename)
@@ -49,6 +48,6 @@ if __name__ == "__main__":
         print("Corrupted files found:")
         for file in corrupted:
             print(file)
-        sys.exit("Error: Corrupted files detected.")  # Trigger an error for Task Scheduler
+        sys.exit("Error: Corrupted files detected.")
     else:
         print("No corrupted files found.")

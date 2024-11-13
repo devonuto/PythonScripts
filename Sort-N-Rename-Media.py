@@ -16,7 +16,11 @@ DATABASE_PRIMARY = 'file_name'
 DATABASE_COLUMN2 = 'previous_name'
 CONN = None
 
-NAMED_DATE_PATTERN = re.compile(r'^(\w{3}_)?(?P<year>\d{4})[\.\-:]?(?P<month>\d{2})[\.\-:]?(?P<day>\d{2})[\s\-_](?P<hour>\d{2})[\.\-:]?(?P<minute>\d{2})[\.\-:]?(?P<second>\d{2})(?:[\.\-:]?(?P<microseconds>\d{0,9}))?(?P<offset>\+\d{2}[\.\-:]\d{2})?',re.IGNORECASE)
+NAMED_DATE_PATTERN = re.compile(
+    r'^(\w{3}_)?(?P<year>\d{4})[\.\-:]?(?P<month>\d{2})[\.\-:]?(?P<day>\d{2})'
+    r'(?:[\s\-_](?P<hour>\d{2})[\.\-:]?(?P<minute>\d{2})[\.\-:]?(?P<second>\d{2}))?'
+    r'(?:[\.\-:]?(?P<microseconds>\d{0,9}))?(?P<offset>\+\d{2}[\.\-:]\d{2})?',
+    re.IGNORECASE)
 DATETIME_ORIGINAL = 'DateTimeOriginal' 
 ORIGINAL_SUBSECONDS = 'SubSecTimeOriginal'
 CREATED_DATE = 'CreateDate'
@@ -79,16 +83,13 @@ def process_files(start_directory):
                     file_path, new_file_path = create_new_filename_from_exif_data(dirpath, file_path, extension, photo, video, progress_bar)                         
             else:
                 file_path, new_file_path = create_new_filename_from_exif_data(dirpath, file_path, extension, photo, video, progress_bar)
-
-            if new_file_path and os.path.basename(new_file_path).startswith("0000-00-00"):                
-                continue
-
+                
             if file_path and new_file_path:
                 if not os.path.exists(os.path.dirname(new_file_path)):
                     os.makedirs(os.path.dirname(new_file_path))
                 
                 new_file_path = move_or_rename_file(file_path, new_file_path, logger, progress_bar)
-                if new_file_path and not has_been_processed(CONN, DATABASE_TABLE, [DATABASE_PRIMARY, DATABASE_COLUMN2], [os.path.basename(new_file_path), os.path.basename(file_path)], logger):                    
+                if new_file_path and not has_been_processed(CONN, DATABASE_TABLE, [DATABASE_PRIMARY, DATABASE_COLUMN2], [os.path.basename(new_file_path), os.path.basename(file_path)], logger):
                     record_db_update(
                         CONN, 
                         DATABASE_TABLE, 
@@ -97,6 +98,7 @@ def process_files(start_directory):
                         logger, 
                         [DATABASE_PRIMARY, DATABASE_COLUMN2],
                         progress_bar)
+                
 
             # Add the name as the Title in the EXIF data for pictures or videos if it was not extracted from the filename
             if new_file_path and file_name and not from_fileName and not DATETIME.search(file_name):
@@ -109,36 +111,19 @@ def process_files(start_directory):
     progress_bar.close()
     delete_empty_folders(start_directory, logger)
 
-def create_new_filename_from_exif_data(folder, filename, extension, photo, video, progress_bar):
-    """
-    Generates a new filename based on EXIF metadata for given media file and determines its new destination path.
-    
-    The function uses EXIF data to determine the creation date and time of a media file (photo or video) and formats
-    a new filename based on this data. It ensures the new filename is placed in the correct year and month directory
-    within the specified start directory.
 
-    Args:
-        folder (str): The directory where the media file is located.
-        filename (str): The name of the file, including its extension.
-        extension (str): The file extension (e.g., '.jpg', '.mp4').
-        photo (bool): True if the file is a photo, False otherwise.
-        video (bool): True if the file is a video, False otherwise.
 
-    Returns:
-        tuple: A tuple containing:
-               - The current full path to the file.
-               - The new full path to the file if a new filename was successfully generated and differs from the original; None otherwise.
-    """
+import os
+import re
 
-    # Validate input parameters
-    if not folder or not filename or not extension:
+def create_new_filename_from_exif_data(folder, file_path, extension, photo, video, progress_bar):
+    if not folder or not file_path or not extension:
         log_debug(logger, "Input parameters are missing.", progress_bar)
         return None, None
 
-    current_full_path = os.path.join(folder, filename)
 
     exif_datetime = get_exif_datetime(
-        current_full_path,
+        file_path,
         DATETIME_ORIGINAL if photo else CREATED_DATE,
         ORIGINAL_SUBSECONDS if photo else CREATED_SUBSECONDS,
         logger
@@ -147,7 +132,7 @@ def create_new_filename_from_exif_data(folder, filename, extension, photo, video
     if not exif_datetime:
         log_debug(logger, "Failed to extract initial EXIF datetime, trying alternative tags.", progress_bar)
         exif_datetime = get_exif_datetime(
-            current_full_path,
+            file_path,
             FILE_MODIFY_DATE if photo else ASF_CREATION_DATE,
             None,
             logger
@@ -156,54 +141,38 @@ def create_new_filename_from_exif_data(folder, filename, extension, photo, video
     if not exif_datetime and video:
         log_debug(logger, "Video file; attempting to extract EXIF using original datetime tag without subseconds.", progress_bar)
         exif_datetime = get_exif_datetime(
-            current_full_path,
+            file_path,
             DATETIME_ORIGINAL,
             None,
             logger
         )
 
-    if exif_datetime:
-        exif_match = NAMED_DATE_PATTERN.match(exif_datetime)
-        filename_match = NAMED_DATE_PATTERN.match(filename)
-
-        if exif_match and filename_match and exif_match.group('hour') == '00' and filename_match.group('hour') != '00':
-            if exif_match.group('year') == '0000' and filename_match.group('year') != '0000':
-                exif_datetime = (filename_match.group('year') +
-                                ':' + filename_match.group('month') +
-                                ':' + filename_match.group('day') +
-                                ' ' + filename_match.group('hour') +
-                                ':' + filename_match.group('minute') +
-                                ':' + filename_match.group('second'))
-            else:
-                exif_datetime = (exif_match.group('year') +
-                                ':' + exif_match.group('month') +
-                                ':' + exif_match.group('day') +
-                                ' ' + filename_match.group('hour') +
-                                ':' + filename_match.group('minute') +
-                                ':' + filename_match.group('second'))
-
-            if add_exif_data(current_full_path, DATETIME_ORIGINAL, exif_datetime, logger):
-                log_info(logger, f"Updated \"{DATETIME_ORIGINAL}\" to \"{exif_datetime}\" on \"{filename}\".", progress_bar)
-
+    if exif_datetime and exif_datetime[:4] != '0000':
         year, month, new_filename = format_new_filename(exif_datetime, extension)
+    elif NAMED_DATE_PATTERN.match(os.path.basename(file_path)):
+        year, month, new_filename = format_new_filename(os.path.basename(file_path), extension)
+    else:
+        log_warning(logger, f"Failed to extract valid EXIF datetime from \"{file_path}\"", progress_bar)
+        return None, None
 
-        if not year or not month or not new_filename:
-            log_debug(logger, f"Failed to format new filename based on EXIF datetime: {exif_datetime}", progress_bar)
-            return None, None
+    if not year or not month or not new_filename or year == '0000' or month == '00':
+        log_warning(logger, f"Invalid year or month extracted: {year}-{month}", progress_bar)
+        return None, None
 
-        new_file_path = get_new_destination(start_directory, year, month, new_filename)
-        
-        if current_full_path == new_file_path:
-            log_debug(logger, "New path is identical to current path.", progress_bar)
-            return current_full_path, None
+    new_file_path = get_new_destination(start_directory, year, month, new_filename)
 
-        log_debug(logger, f"File will be moved from \"{current_full_path}\" to \"{new_file_path}\"", progress_bar)
-        return current_full_path, new_file_path
+    if file_path == new_file_path:
+        log_debug(logger, "New path is identical to current path.", progress_bar)
+        return file_path, None
 
-    log_warning(logger, f"Failed to extract EXIF datetime from \"{filename}\"", progress_bar)
-    return None, None
+    log_debug(logger, f"File will be moved from \"{file_path}\" to \"{new_file_path}\"", progress_bar)
+    return file_path, new_file_path
+
 
 def get_new_destination(start_directory, year, month, new_filename):
+    # Debug: Print the values to diagnose the issue
+    print(f"Year: {year}, Month: {month}, Filename: {new_filename}")
+    
     # Validate input parameters
     if not (year.isdigit() and len(year) == 4 and month.isdigit() and 1 <= int(month) <= 12 and new_filename):
         raise ValueError("Invalid year, month, or filename provided.")
@@ -235,9 +204,9 @@ def format_new_filename(filename, extension):
         year = match.group('year')
         month = match.group('month')
         day = match.group('day')
-        hour = match.group('hour')
-        minute = match.group('minute')
-        second = match.group('second')
+        hour = match.group('hour') or '00'
+        minute = match.group('minute') or '00'
+        second = match.group('second') or '00'
         microseconds = match.group('microseconds') or '000'
 
         # Construct the new filename based on extracted components
