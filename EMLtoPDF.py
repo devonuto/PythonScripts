@@ -3,7 +3,7 @@ import email
 import pdfkit
 
 # Set the directory containing the .eml files
-directory = r"%USERPROFILE%\Downloads"
+directory = os.path.expanduser(r"~/Downloads")
 
 # Function to convert .eml to .pdf
 def eml_to_pdf(eml_file_path):
@@ -34,8 +34,13 @@ def eml_to_pdf(eml_file_path):
         pdfkit.from_string(html_content, pdf_file_path)
         print(f"Converted: {eml_file_path} to {pdf_file_path}")
 
-# Iterate over all files in the directory
-for filename in os.listdir(directory):
-    if filename.endswith('.eml'):
-        eml_file_path = os.path.join(directory, filename)
-        eml_to_pdf(eml_file_path)
+# Function to recursively find and convert .eml files
+def convert_eml_files_recursively(directory):
+    for root, _, files in os.walk(directory):
+        for filename in files:
+            if filename.endswith('.eml'):
+                eml_file_path = os.path.join(root, filename)
+                eml_to_pdf(eml_file_path)
+
+# Start the recursive conversion process
+convert_eml_files_recursively(directory)
