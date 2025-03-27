@@ -88,15 +88,15 @@ def rename_mkv_if_needed(original_full_path):
 
 # --- Main execution block ---
 if __name__ == "__main__":
-    logging.info("Script execution started.")
-    logging.info(f"Arguments received: {sys.argv}")
+    log_info(logger, "Script execution started.")
+    log_info(logger, f"Arguments received: {sys.argv}")
 
     # Expecting exactly one argument from MKVToolNix (the script name itself is sys.argv[0])
     if len(sys.argv) != 2:
-        logging.error(
+        log_error(logger,
             f"Incorrect number of arguments. Expected 1 (the destination file path), but received {len(sys.argv) - 1}."
         )
-        logging.error(
+        log_error(logger,
             'Usage within MKVToolNix: execute python C:\\path\\to\\your\\script.py "<MTX_DESTINATION_FILE_NAME>"'
         )
         sys.exit(1)  # Exit with an error code
@@ -106,5 +106,5 @@ if __name__ == "__main__":
 
     rename_mkv_if_needed(mkv_file_path)
 
-    logging.info("Script execution finished.")
+    log_info(logger, "Script execution finished.")
     sys.exit(0)  # Exit successfully
