@@ -13,7 +13,7 @@ logger = setup_custom_logger('Set-Recommended-VPN-Server')
 
 # Function to fetch the recommended servers
 def get_recommended_servers():
-    url = 'https://nordvpn.com/wp-admin/admin-ajax.php?action=servers_recommendations'
+    url = 'https://api.nordvpn.com/v1/servers/recommendations'
     logger.info("Fetching recommended servers from NordVPN")
     response = requests.get(url)
     response.raise_for_status()
