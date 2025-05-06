@@ -438,25 +438,34 @@ def generate_feeds():
                 .feed-info h2 a:hover, .feed-info h2 a:focus {{ 
                     text-decoration: underline; 
                 }}
-                .feed-info p {{ 
-                    margin: 0; 
-                    font-size: 0.85em; /* Adjusted font size */
-                    color: #444; /* Slightly darker paragraph text */
+                .feed-info .links-container p {{ /* Target p tags inside links-container */
+                    margin: 8px 0 0 0; /* Add some top margin to space out the links */
+                    font-size: 0.85em; 
+                    color: #444; 
                 }}
-                .subscribe-link {{ 
+                .subscribe-link, .pocketcasts-link {{ 
                     display: inline-block; 
+                    margin-right: 10px; /* Space between subscribe links */
                     margin-top: 8px; 
                     font-size: 0.85em; 
-                    padding: 7px 14px; /* Adjusted padding */
-                    background-color: #0066cc; 
+                    padding: 7px 14px; 
                     color: white; 
                     border-radius: 4px; 
                     text-decoration: none; 
                     transition: background-color 0.3s ease; 
                     font-weight: 500;
                 }}
+                .subscribe-link {{ /* Generic podcast app link */
+                    background-color: #0066cc; 
+                }}
                 .subscribe-link:hover, .subscribe-link:focus {{ 
                     background-color: #004c99; 
+                }}
+                .pocketcasts-link {{ /* Pocket Casts specific link */
+                    background-color: #f43409; /* Pocket Casts orange/red */
+                }}
+                .pocketcasts-link:hover, .pocketcasts-link:focus {{
+                    background-color: #c32907;
                 }}
                 .no-image {{ 
                     width: 70px; 
@@ -500,9 +509,14 @@ def generate_feeds():
                     .feed-info h2 {{
                         font-size: 1.1em;
                     }}
-                    .opml-link, .subscribe-link {{
+                    .opml-link, .subscribe-link, .pocketcasts-link {{
                         padding: 10px 18px; /* Ensure good tap size */
                         font-size: 0.95em;
+                        margin-bottom: 5px; /* Add some space if they wrap */
+                    }}
+                    .feed-info .links-container p {{
+                         display: flex; /* Allow links to wrap nicely */
+                         flex-wrap: wrap;
                     }}
                 }}
             </style>
@@ -523,11 +537,19 @@ def generate_feeds():
             else:
                 html_content += '<div class="no-image">No Cover</div>'
             html_content += '<div class="feed-info">'
-            feed_link_with_scheme = f"podcast://{feed_info['feed_url'].replace('https://', '').replace('http://', '')}"
-            html_content += f'<h2><a href="{feed_info["feed_url"]}">{feed_info["title"]}</a></h2>'
-            html_content += f'<p><a href="{feed_link_with_scheme}" class="subscribe-link">Subscribe with Podcast App</a></p>'
-            html_content += f'<p><small>Direct feed: <a href="{feed_info["feed_url"]}">{feed_info["feed_url"]}</a></small></p>'
-            html_content += '</div></li>'
+            
+            # Prepare URLs for different subscription links
+            direct_feed_url = feed_info["feed_url"]
+            generic_podcast_scheme_url = f"podcast://{direct_feed_url.replace('https://', '').replace('http://', '')}"
+            pocketcasts_scheme_url = f"pktc://subscribe/{direct_feed_url.replace('https://', '').replace('http://', '')}"
+
+            html_content += f'<h2><a href="{direct_feed_url}">{feed_info["title"]}</a></h2>'
+            html_content += '<div class="links-container">' # Container for subscribe links
+            html_content += f'<p><a href="{generic_podcast_scheme_url}" class="subscribe-link">Subscribe (General)</a>'
+            html_content += f'<a href="{pocketcasts_scheme_url}" class="pocketcasts-link">Subscribe (Pocket Casts)</a></p>'
+            html_content += f'<p><small>Direct feed: <a href="{direct_feed_url}">{direct_feed_url}</a></small></p>'
+            html_content += '</div>' # Close links-container
+            html_content += '</div></li>' # Close feed-info and feed-item
 
         html_content += """
             </ul>
