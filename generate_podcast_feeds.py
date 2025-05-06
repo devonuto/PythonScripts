@@ -31,12 +31,22 @@ else:
 # --- Common Configuration (adjust if needed) ---
 FEEDS_SUBDIR = "feeds" # Subdirectory for feed XML files (relative to OUTPUT_WEB_DIR)
 HTML_INDEX_FILENAME = "audiobook_feeds.html" # Name of the HTML index file (in OUTPUT_WEB_DIR)
+OPML_FILENAME = "audiobook_feeds.opml"       # Name of the OPML file (in OUTPUT_WEB_DIR)
 DESCRIPTION_FILENAME = "description.txt" # Filename for book description text file (fallback)
 COVER_IMAGE_FILENAME = "folder.jpg" # Standard name for cover images
 
 # Public base URL for accessing audio files and cover images FROM THE INTERNET
+# This is the root URL where your 'audiobooks' folder is publicly accessible.
 PUBLIC_AUDIO_BASE_URL = "https://audiobooks.devo-media.synology.me/audiobooks"
-PUBLIC_FEEDS_BASE_URL = f"https://audiobooks.devo-media.synology.me/{FEEDS_SUBDIR}"
+
+# Public base URL for accessing the generated feed XML files.
+# This is the root URL where your 'feeds' subdirectory is publicly accessible.
+PUBLIC_FEEDS_BASE_URL = "https://audiobooks.devo-media.synology.me/feeds"
+
+# Public base URL for the root where HTML and OPML will be.
+# This is usually the root of your website for this content.
+PUBLIC_HTML_OPML_BASE_URL = "https://audiobooks.devo-media.synology.me"
+
 
 # Default podcast settings
 PODCAST_LANGUAGE = "en-us"
@@ -140,27 +150,23 @@ def generate_feeds():
             feed_xml_filename = f"{feed_filename_base}.xml"
             feed_xml_path = feeds_output_dir / feed_xml_filename
 
-            # --- Get Cover Image URL for HTML page and Feed ---
             cover_image_path = book_dir / COVER_IMAGE_FILENAME
-            public_cover_image_url_for_feed = None # For the feed XML
-            public_cover_image_url_for_html = None # For the HTML page
+            public_cover_image_url_for_feed = None
+            public_cover_image_url_for_html = None
 
             if cover_image_path.is_file():
                 try:
                     relative_image_path_parts = cover_image_path.relative_to(AUDIOBOOKS_BASE_DIR).parts
+                    # Corrected URL construction for cover image
                     public_cover_image_url_for_feed = f"{PUBLIC_AUDIO_BASE_URL}/{'/'.join(relative_image_path_parts)}"
-                    # For HTML, we can use the same URL or a relative one if HTML and images are served from same domain structure
                     public_cover_image_url_for_html = public_cover_image_url_for_feed
                 except ValueError:
                      print(f"    ERROR: Could not determine relative path for cover image: {cover_image_path}")
                      time.sleep(2)
-                     # Continue without cover for this book, or skip book? For now, continue.
             else:
                 print(f"    WARNING: Cover image '{COVER_IMAGE_FILENAME}' not found for {book_title_folder_name}. Feed will lack image. HTML will show placeholder if any.")
                 time.sleep(1)
-                # Not skipping the book, just feed will lack image.
 
-            # --- Get Book Description ---
             book_description_text = None
             default_book_description = f"An audiobook: {book_title_folder_name} by {author_name}."
 
@@ -184,7 +190,7 @@ def generate_feeds():
                     elif 'description' in audio_tags and audio_tags['description']:
                         book_description_text = audio_tags['description'][0].strip()
                         if book_description_text: print(f"    INFO: Using book description from ID3 'description' tag of '{first_audio_file_path.name}'.")
-                    if not book_description_text:
+                    if not book_description_text: # Check if tag was found but empty
                          print(f"    INFO: Relevant ID3 description/comment tags in '{first_audio_file_path.name}' are empty.")
             except mutagen.MutagenError as e:
                 print(f"    WARNING: Mutagen error reading ID3 for book description from '{first_audio_file_path.name}': {e}.")
@@ -201,7 +207,7 @@ def generate_feeds():
                             book_description_text = f_desc.read().strip()
                         if book_description_text:
                             print(f"    INFO: Found and used description from '{DESCRIPTION_FILENAME}' for {book_title_folder_name}.")
-                        else:
+                        else: # File found but empty
                             print(f"    INFO: Description file '{DESCRIPTION_FILENAME}' is empty for {book_title_folder_name}.")
                     except Exception as e:
                         print(f"    WARNING: Could not read '{DESCRIPTION_FILENAME}' for {book_title_folder_name}: {e}.")
@@ -209,14 +215,12 @@ def generate_feeds():
                 else:
                     print(f"    INFO: Description file '{DESCRIPTION_FILENAME}' not found for {book_title_folder_name}.")
 
-            if not book_description_text:
+            if not book_description_text: # If still no description, use default
                 book_description_text = default_book_description
                 print(f"    INFO: Using default generated description for {book_title_folder_name}.")
 
-            # Check for cover image again, as we need it for the feed itself
-            if not public_cover_image_url_for_feed:
+            if not public_cover_image_url_for_feed: # Check again before creating feed
                  print(f"    WARNING: No cover image URL for feed of book {book_title_folder_name}. iTunes image tag will be missing.")
-
 
             print(f"    Found {len(audio_files)} audio files (episodes).")
 
@@ -224,7 +228,7 @@ def generate_feeds():
             channel = ET.SubElement(rss, "channel")
 
             ET.SubElement(channel, "title").text = podcast_title
-            ET.SubElement(channel, "link").text = PUBLIC_AUDIO_BASE_URL
+            ET.SubElement(channel, "link").text = PUBLIC_HTML_OPML_BASE_URL # Link to the main site (HTML index page)
             ET.SubElement(channel, "description").text = book_description_text
             ET.SubElement(channel, "language").text = PODCAST_LANGUAGE
             ET.SubElement(channel, "pubDate").text = get_rfc822_date()
@@ -232,7 +236,7 @@ def generate_feeds():
 
             ET.SubElement(channel, "itunes:author").text = author_name
             ET.SubElement(channel, "itunes:summary").text = book_description_text
-            if public_cover_image_url_for_feed: # Only add image tag if URL exists
+            if public_cover_image_url_for_feed:
                 ET.SubElement(channel, "itunes:image", href=public_cover_image_url_for_feed)
             ET.SubElement(channel, "itunes:explicit").text = PODCAST_EXPLICIT
             ET.SubElement(channel, "itunes:category", text=PODCAST_CATEGORY)
@@ -276,6 +280,7 @@ def generate_feeds():
 
                 try:
                     relative_audio_path_parts = audio_file_path_for_episode.relative_to(AUDIOBOOKS_BASE_DIR).parts
+                    # Corrected URL construction for audio file
                     public_audio_file_url = f"{PUBLIC_AUDIO_BASE_URL}/{'/'.join(relative_audio_path_parts)}"
                 except ValueError:
                      print(f"    ERROR: Could not determine relative path for audio file: {audio_file_path_for_episode}")
@@ -300,55 +305,105 @@ def generate_feeds():
                 print(f"    SUCCESS: Feed generated: {feed_xml_path}")
                 all_feeds_info.append({
                     "title": podcast_title,
-                    "feed_url": f"{PUBLIC_FEEDS_BASE_URL}/{feed_xml_filename.replace(os.sep, '/')}", # XML feed URL
-                    "image_url": public_cover_image_url_for_html # URL for the cover image for the HTML page
+                    "feed_url": f"{PUBLIC_FEEDS_BASE_URL}/{feed_xml_filename.replace(os.sep, '/')}",
+                    "image_url": public_cover_image_url_for_html
                 })
             except Exception as e:
                 print(f"    ERROR: Could not write XML feed for {podcast_title}: {e}")
                 time.sleep(2)
 
+    # --- Generate OPML File ---
     if all_feeds_info:
-        html_content = """
+        opml = ET.Element("opml", version="2.0")
+        head = ET.SubElement(opml, "head")
+        ET.SubElement(head, "title").text = "Audiobook Podcast Feeds"
+        ET.SubElement(head, "dateCreated").text = get_rfc822_date()
+        body = ET.SubElement(opml, "body")
+        
+        all_feeds_info.sort(key=lambda x: x['title']) 
+        for feed_info in all_feeds_info:
+            ET.SubElement(body, "outline",
+                          type="rss",
+                          text=feed_info["title"],
+                          title=feed_info["title"], 
+                          xmlUrl=feed_info["feed_url"])
+        
+        opml_path = OUTPUT_WEB_DIR / OPML_FILENAME
+        try:
+            opml_str = ET.tostring(opml, encoding='utf-8')
+            parsed_opml = minidom.parseString(opml_str)
+            pretty_opml_str = parsed_opml.toprettyxml(indent="  ", encoding="utf-8")
+            with open(opml_path, "wb") as f:
+                f.write(pretty_opml_str)
+            print(f"\nSUCCESS: OPML file generated: {opml_path}")
+        except Exception as e:
+            print(f"\nERROR: Could not write OPML file: {e}")
+            time.sleep(2)
+
+
+    # --- Generate HTML Index Page ---
+    if all_feeds_info:
+        public_opml_url = f"{PUBLIC_HTML_OPML_BASE_URL}/{OPML_FILENAME}"
+
+        html_content = f"""
         <html><head><title>Audiobook Podcast Feeds</title>
         <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: #f4f4f4; color: #333; }
-            .container { max-width: 900px; margin: 40px auto; padding: 20px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-            h1 { color: #333; text-align: center; margin-bottom: 30px; }
-            .feed-list { list-style-type: none; padding: 0; }
-            .feed-item { display: flex; align-items: center; margin-bottom: 20px; padding: 15px; background-color: #fff; border: 1px solid #ddd; border-radius: 6px; transition: box-shadow 0.3s ease; }
-            .feed-item:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-            .feed-item img { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; margin-right: 20px; border: 1px solid #eee; }
-            .feed-info { flex-grow: 1; }
-            .feed-info h2 { margin: 0 0 8px 0; font-size: 1.4em; color: #007bff; }
-            .feed-info h2 a { text-decoration: none; color: inherit; }
-            .feed-info h2 a:hover { text-decoration: underline; }
-            .feed-info p { margin: 0; font-size: 0.9em; color: #555; }
-            .subscribe-link { display: inline-block; margin-top: 5px; font-size: 0.9em; padding: 6px 12px; background-color: #007bff; color: white; border-radius: 4px; text-decoration: none; transition: background-color 0.3s ease; }
-            .subscribe-link:hover { background-color: #0056b3; }
-            .no-image { width: 80px; height: 80px; background-color: #e9ecef; display: flex; align-items: center; justify-content: center; color: #6c757d; font-size:0.8em; text-align:center; border-radius: 4px; margin-right: 20px; border: 1px solid #ddd;}
+            body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: #f4f4f4; color: #333; }}
+            .container {{ max-width: 900px; margin: 40px auto; padding: 20px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+            h1 {{ color: #333; text-align: center; margin-bottom: 15px; }}
+            .opml-link-container {{ text-align: center; margin-bottom: 30px; }}
+            .opml-link {{ display: inline-block; padding: 10px 20px; background-color: #28a745; color: white; border-radius: 5px; text-decoration: none; font-size: 1.1em; transition: background-color 0.3s ease; }}
+            .opml-link:hover {{ background-color: #218838; }}
+            .feed-list {{ list-style-type: none; padding: 0; }}
+            .feed-item {{ display: flex; align-items: center; margin-bottom: 20px; padding: 15px; background-color: #fff; border: 1px solid #ddd; border-radius: 6px; transition: box-shadow 0.3s ease; }}
+            .feed-item:hover {{ box-shadow: 0 4px 12px rgba(0,0,0,0.15); }}
+            .feed-item img.book-cover {{ width: 80px; height: 80px; object-fit: cover; border-radius: 4px; margin-right: 20px; border: 1px solid #eee; }} /* Added class for book cover */
+            .feed-info {{ flex-grow: 1; }}
+            .feed-info h2 {{ margin: 0 0 8px 0; font-size: 1.4em; }}
+            .feed-info h2 a {{ text-decoration: none; color: #007bff; }}
+            .feed-info h2 a:hover {{ text-decoration: underline; }}
+            .feed-info p {{ margin: 0; font-size: 0.9em; color: #555; }}
+            .subscribe-link {{ display: inline-block; margin-top: 5px; font-size: 0.9em; padding: 6px 12px; background-color: #007bff; color: white; border-radius: 4px; text-decoration: none; transition: background-color 0.3s ease; }}
+            .subscribe-link:hover {{ background-color: #0056b3; }}
+            .no-image {{ width: 80px; height: 80px; background-color: #e9ecef; display: flex; align-items: center; justify-content: center; color: #6c757d; font-size:0.8em; text-align:center; border-radius: 4px; margin-right: 20px; border: 1px solid #ddd;}}
+            .app-logo {{ /* Renamed from .pocketcasts-logo for generality */
+                height: 2em; /* Or a specific pixel value like 16px */
+                width: auto; /* Maintain aspect ratio */
+                margin-right: 6px; /* Space between logo and text */
+                vertical-align: middle; /* Align with link text */
+            }}
         </style>
         </head><body>
         <div class="container">
             <h1>Available Audiobook Podcast Feeds</h1>
+            <div class="opml-link-container">
+                <a href="{public_opml_url}" class="opml-link" download="{OPML_FILENAME}">Download All Feeds (OPML)</a>
+            </div>
             <ul class="feed-list">
         """
 
-        all_feeds_info.sort(key=lambda x: x['title'])
-
+        # all_feeds_info is already sorted from OPML generation
         for feed_info in all_feeds_info:
             html_content += '<li class="feed-item">'
             if feed_info['image_url']:
-                html_content += f'<img src="{feed_info["image_url"]}" alt="Cover for {feed_info["title"]}">'
+                # Added class "book-cover" to the main image for clarity
+                html_content += f'<img src="{feed_info["image_url"]}" alt="Cover for {feed_info["title"]}" class="book-cover">'
             else:
                 html_content += '<div class="no-image">No Cover</div>'
             html_content += '<div class="feed-info">'
-            # Using podcast: scheme for the link to encourage opening in podcast app
-            feed_link_with_scheme = f"podcast://{feed_info['feed_url'].replace('https://', '').replace('http://', '')}"
-            # Some apps might prefer the direct https link, so we can offer both or just the direct one.
-            # For simplicity, using the podcast: scheme here. Direct link is also good.
-            html_content += f'<h2><a href="{feed_info["feed_url"]}">{feed_info["title"]}</a></h2>' # Direct link is safer for universal compatibility
-            html_content += f'<p><a href="{feed_link_with_scheme}" class="subscribe-link">Subscribe with Podcast App</a></p>'
-            html_content += f'<p><small>Direct feed: <a href="{feed_info["feed_url"]}">{feed_info["feed_url"]}</a></small></p>'
+            
+            # Using direct feed URL for the main title link
+            html_content += f'<h2><a href="{feed_info["feed_url"]}">{feed_info["title"]}</a></h2>'
+            
+            # Pocket Casts specific link (example)
+            # Note: The Pocket Casts URL scheme is pktc://subscribe/your-feed-url (without http(s)://)
+            pocket_casts_subscribe_url = f"pktc://subscribe/{feed_info['feed_url'].replace('https://', '').replace('http://', '')}"
+            html_content += f'<p><a href="{pocket_casts_subscribe_url}" class="subscribe-link pocketcasts-link">'
+            html_content += f'<img src="https://upload.wikimedia.org/wikipedia/commons/c/ca/Pocket_Casts_icon.svg" alt="Pocket Casts logo" class="app-logo">Subscribe with Pocket Casts</a></p>'
+            
+            # Generic "Subscribe with Podcast App" link (direct feed URL)
+            html_content += f'<p><a href="{feed_info["feed_url"]}" class="subscribe-link">Subscribe (General)</a></p>'
+            # Removed the extra "Direct feed" small text link as the title and subscribe button already point to it.
             html_content += '</div></li>'
 
         html_content += """
@@ -360,14 +415,15 @@ def generate_feeds():
             with open(html_index_path, "w", encoding="utf-8") as f:
                 f.write(html_content)
             print(f"\nSUCCESS: HTML index page generated: {html_index_path}")
-            public_html_index_url = f"{PUBLIC_FEEDS_BASE_URL.rsplit('/', 1)[0]}/{HTML_INDEX_FILENAME}"
-            print(f"Access it at: {public_html_index_url}")
+            public_html_index_url = f"{PUBLIC_HTML_OPML_BASE_URL}/{HTML_INDEX_FILENAME}"
+            print(f"Access HTML index at: {public_html_index_url}")
+            print(f"Access OPML file at: {public_opml_url}")
 
         except Exception as e:
             print(f"\nERROR: Could not write HTML index page: {e}")
             time.sleep(2)
     else:
-        print("\nNo feeds were generated, so no HTML index page was created.")
+        print("\nNo feeds were generated, so no HTML index page or OPML file was created.")
         time.sleep(2)
     print("\nPodcast feed generation finished.")
 
