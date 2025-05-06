@@ -30,7 +30,7 @@ else:
 
 # --- Common Configuration (adjust if needed) ---
 FEEDS_SUBDIR = "feeds" # Subdirectory for feed XML files (relative to OUTPUT_WEB_DIR)
-HTML_INDEX_FILENAME = "audiobook_feeds.html" # Name of the HTML index file (in OUTPUT_WEB_DIR)
+HTML_INDEX_FILENAME = "index.html" # Name of the HTML index file (in OUTPUT_WEB_DIR)
 OPML_FILENAME = "audiobook_feeds.opml"       # Name of the OPML file (in OUTPUT_WEB_DIR)
 DESCRIPTION_FILENAME = "description.txt" # Filename for book description text file (fallback)
 COVER_IMAGE_FILENAME = "folder.jpg" # Standard name for cover images
