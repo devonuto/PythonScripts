@@ -30,26 +30,22 @@ else:
 
 # --- Common Configuration (adjust if needed) ---
 FEEDS_SUBDIR = "feeds" # Subdirectory for feed XML files (relative to OUTPUT_WEB_DIR)
-HTML_INDEX_FILENAME = "index.html" # Changed from audiobook_feeds.html
-OPML_FILENAME = "audiobook_feeds.opml"       # Name of the OPML file (in OUTPUT_WEB_DIR)
-DESCRIPTION_FILENAME = "description.txt" # Filename for book description text file (fallback)
-COVER_IMAGE_FILENAME = "folder.jpg" # Standard name for cover images
-POCKET_CASTS_ICON_URL = "https://upload.wikimedia.org/wikipedia/commons/c/ca/Pocket_Casts_icon.svg" # Icon URL
+HTML_INDEX_FILENAME = "index.html" 
+OPML_FILENAME = "audiobook_feeds.opml"       
+CSS_FILENAME = "audiobook_styles.css" # Name for the external CSS file
+DESCRIPTION_FILENAME = "description.txt" 
+COVER_IMAGE_FILENAME = "folder.jpg" 
+POCKET_CASTS_ICON_URL = "https://upload.wikimedia.org/wikipedia/commons/c/ca/Pocket_Casts_icon.svg"
+RSS_FEED_ICON_URL = "https://upload.wikimedia.org/wikipedia/commons/d/d9/Rss-feed.svg"
+IOS_PODCAST_ICON_URL = "https://upload.wikimedia.org/wikipedia/commons/e/e7/Podcasts_%28iOS%29.svg"
 
-# Public base URL for accessing audio files and cover images FROM THE INTERNET
-# This points to the 'audiobooks' subdirectory where actual media files are.
 PUBLIC_AUDIO_FILES_BASE_URL = "https://audiobooks.devo-media.synology.me/audiobooks"
-
-# Base domain URL - this is where index.html and opml will be served from,
-# and where the 'feeds' subdirectory will be.
 BASE_DOMAIN_URL = "https://audiobooks.devo-media.synology.me"
 
-# Construct full public URLs
 PUBLIC_FEEDS_BASE_URL = f"{BASE_DOMAIN_URL}/{FEEDS_SUBDIR}"
-PUBLIC_HTML_OPML_BASE_URL = f"{BASE_DOMAIN_URL}" # index.html and opml are at the root of this domain
+PUBLIC_HTML_OPML_BASE_URL = f"{BASE_DOMAIN_URL}" 
 
 
-# Default podcast settings
 PODCAST_LANGUAGE = "en-us"
 PODCAST_EXPLICIT = "no"
 PODCAST_CATEGORY = "Books"
@@ -57,7 +53,6 @@ PODCAST_CATEGORY = "Books"
 SUPPORTED_AUDIO_EXTENSIONS = ['.mp3', '.m4a', '.ogg', '.aac', '.wav']
 
 # --- Helper Functions ---
-
 def create_safe_filename(name):
     name = re.sub(r'[^\w\s-]', '', name).strip()
     name = re.sub(r'[-\s]+', '-', name)
@@ -308,6 +303,7 @@ def generate_feeds():
                 print(f"    SUCCESS: Feed generated: {feed_xml_path}")
                 all_feeds_info.append({
                     "title": podcast_title,
+                    "description": book_description_text,
                     "feed_url": f"{PUBLIC_FEEDS_BASE_URL}/{feed_xml_filename.replace(os.sep, '/')}",
                     "image_url": public_cover_image_url_for_html
                 })
@@ -329,7 +325,8 @@ def generate_feeds():
                           type="rss",
                           text=feed_info["title"],
                           title=feed_info["title"],
-                          xmlUrl=feed_info["feed_url"])
+                          xmlUrl=feed_info["feed_url"],
+                          description=feed_info["description"],)
         
         opml_path = OUTPUT_WEB_DIR / OPML_FILENAME
         try:
@@ -346,7 +343,8 @@ def generate_feeds():
 
     # --- Generate HTML Index Page ---
     if all_feeds_info:
-        public_opml_url = f"{PUBLIC_HTML_OPML_BASE_URL}/{OPML_FILENAME}" # OPML is at the root
+        public_opml_url = f"{PUBLIC_HTML_OPML_BASE_URL}/{OPML_FILENAME}" # URL for the OPML file
+        public_css_url = f"{PUBLIC_HTML_OPML_BASE_URL}/{CSS_FILENAME}" # URL for the CSS file
 
         html_content = f"""<!DOCTYPE html>
         <html lang="en">
@@ -354,185 +352,7 @@ def generate_feeds():
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Audiobook Podcast Feeds</title>
-            <style>
-                body {{ 
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-                    margin: 0; 
-                    padding: 0;
-                    background-color: #f0f2f5; /* Light grey background */
-                    color: #333; 
-                    line-height: 1.6;
-                }}
-                .container {{ 
-                    width: 90%; /* More fluid width */
-                    max-width: 960px; /* Max width for larger screens */
-                    margin: 20px auto; /* Reduced top/bottom margin for mobile */
-                    padding: 15px; /* Reduced padding for mobile */
-                    background-color: #fff; 
-                    border-radius: 8px; 
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.08); 
-                }}
-                h1 {{ 
-                    color: #1a1a1a; /* Darker heading */
-                    text-align: center; 
-                    margin-bottom: 20px; /* Reduced margin */
-                    font-size: 1.8em; /* Responsive font size */
-                }}
-                .opml-link-container {{ 
-                    text-align: center; 
-                    margin-bottom: 25px; 
-                }}
-                .opml-link {{ 
-                    display: inline-block; 
-                    padding: 12px 22px; /* Slightly larger padding for touch */
-                    background-color: #28a745; 
-                    color: white; 
-                    border-radius: 5px; 
-                    text-decoration: none; 
-                    font-size: 1.0em; /* Adjusted font size */
-                    transition: background-color 0.3s ease; 
-                    font-weight: 500;
-                }}
-                .opml-link:hover, .opml-link:focus {{ 
-                    background-color: #218838; 
-                    outline: none; /* Remove default focus outline if custom is not added */
-                }}
-                .feed-list {{ 
-                    list-style-type: none; 
-                    padding: 0; 
-                }}
-                .feed-item {{ 
-                    display: flex; 
-                    flex-direction: row; /* Default for larger screens */
-                    align-items: center; 
-                    margin-bottom: 15px; 
-                    padding: 12px; 
-                    background-color: #f9f9f9; /* Lighter item background */
-                    border: 1px solid #e0e0e0; /* Softer border */
-                    border-radius: 6px; 
-                    transition: box-shadow 0.3s ease; 
-                }}
-                .feed-item:hover {{ 
-                    box-shadow: 0 3px 8px rgba(0,0,0,0.1); 
-                }}
-                .feed-item img.cover-art {{ /* Class for book cover art */
-                    width: 70px; 
-                    height: 70px; 
-                    object-fit: cover; 
-                    border-radius: 4px; 
-                    margin-right: 15px; 
-                    border: 1px solid #ccc;
-                    flex-shrink: 0; 
-                }}
-                .feed-info {{ 
-                    flex-grow: 1; 
-                    min-width: 0; 
-                }}
-                .feed-info h2 {{ 
-                    margin: 0 0 5px 0; 
-                    font-size: 1.2em; 
-                }}
-                .feed-info h2 a {{ 
-                    text-decoration: none; 
-                    color: #0066cc; 
-                }}
-                .feed-info h2 a:hover, .feed-info h2 a:focus {{ 
-                    text-decoration: underline; 
-                }}
-                .feed-info .links-container p {{ 
-                    margin: 8px 0 0 0; 
-                    font-size: 0.85em; 
-                    color: #444; 
-                }}
-                .subscribe-link, .pocketcasts-link {{ 
-                    display: inline-flex; /* Use inline-flex for icon alignment */
-                    align-items: center; /* Vertically align icon and text */
-                    justify-content: center; /* Center content if text is short */
-                    margin-right: 10px; 
-                    margin-top: 8px; 
-                    font-size: 0.85em; 
-                    padding: 7px 12px; /* Adjusted padding for icon */
-                    color: white; 
-                    border-radius: 4px; 
-                    text-decoration: none; 
-                    transition: background-color 0.3s ease; 
-                    font-weight: 500;
-                }}
-                .subscribe-link img, .pocketcasts-link img {{
-                    width: 1em; /* Relative to font size */
-                    height: 1em; /* Relative to font size */
-                    margin-right: 6px; /* Space between icon and text */
-                    vertical-align: middle; /* Helps with alignment in some cases */
-                }}
-                .subscribe-link {{ 
-                    background-color: #0066cc; 
-                }}
-                .subscribe-link:hover, .subscribe-link:focus {{ 
-                    background-color: #004c99; 
-                }}
-                .pocketcasts-link {{ 
-                    background-color: #f43409; 
-                }}
-                .pocketcasts-link:hover, .pocketcasts-link:focus {{
-                    background-color: #c32907;
-                }}
-                .no-image {{ 
-                    width: 70px; 
-                    height: 70px; 
-                    background-color: #e0e0e0; 
-                    display: flex; 
-                    align-items: center; 
-                    justify-content: center; 
-                    color: #555; 
-                    font-size:0.75em; 
-                    text-align:center; 
-                    border-radius: 4px; 
-                    margin-right: 15px; 
-                    border: 1px solid #ccc;
-                    flex-shrink: 0;
-                }}
-
-                /* Media Query for smaller screens */
-                @media (max-width: 600px) {{
-                    .container {{
-                        width: 100%;
-                        margin: 0;
-                        padding: 10px;
-                        border-radius: 0; 
-                        box-shadow: none;
-                    }}
-                    h1 {{
-                        font-size: 1.5em;
-                        margin-bottom: 15px;
-                    }}
-                    .feed-item {{
-                        flex-direction: column; 
-                        align-items: flex-start; 
-                    }}
-                    .feed-item img.cover-art, .no-image {{ /* Target cover-art class */
-                        margin-right: 0;
-                        margin-bottom: 10px; 
-                        width: 60px; 
-                        height: 60px;
-                    }}
-                    .feed-info h2 {{
-                        font-size: 1.1em;
-                    }}
-                    .opml-link, .subscribe-link, .pocketcasts-link {{
-                        padding: 10px 18px; 
-                        font-size: 0.95em;
-                        margin-bottom: 5px; 
-                    }}
-                    .feed-info .links-container p {{
-                         display: flex; 
-                         flex-wrap: wrap;
-                         justify-content: flex-start; /* Align links to start on mobile */
-                    }}
-                    .subscribe-link, .pocketcasts-link {{
-                        margin-right: 5px; /* Reduce margin on mobile */
-                    }}
-                }}
-            </style>
+            <link rel="stylesheet" href="{public_css_url}">
         </head><body>
         <div class="container">
             <h1>Available Audiobook Podcast Feeds</h1>
@@ -542,25 +362,26 @@ def generate_feeds():
             <ul class="feed-list">
         """
 
-        # all_feeds_info is already sorted from OPML generation
-        for feed_info in all_feeds_info:
+        for feed_info in all_feeds_info: # Already sorted
             html_content += '<li class="feed-item">'
             if feed_info['image_url']:
-                html_content += f'<img src="{feed_info["image_url"]}" alt="Cover for {feed_info["title"]}" class="cover-art">' # Added class
+                html_content += f'<img src="{feed_info["image_url"]}" alt="Cover for {feed_info["title"]}" class="cover-art">'
             else:
                 html_content += '<div class="no-image">No Cover</div>'
             html_content += '<div class="feed-info">'
             
             direct_feed_url = feed_info["feed_url"]
+            feed_description = feed_info.get("description", "No description available.")
             generic_podcast_scheme_url = f"podcast://{direct_feed_url.replace('https://', '').replace('http://', '')}"
+            feed_podcast_scheme_url = f"feed://{direct_feed_url.replace('https://', '').replace('http://', '')}"
             pocketcasts_scheme_url = f"pktc://subscribe/{direct_feed_url.replace('https://', '').replace('http://', '')}"
 
             html_content += f'<h2><a href="{direct_feed_url}">{feed_info["title"]}</a></h2>'
+            html_content += f'<span>{feed_description}</span>'
             html_content += '<div class="links-container">'
-            html_content += f'<p><a href="{generic_podcast_scheme_url}" class="subscribe-link">Subscribe (General)</a>'
-            # Added img tag for Pocket Casts icon
-            html_content += f'<a href="{pocketcasts_scheme_url}" class="pocketcasts-link"><img src="{POCKET_CASTS_ICON_URL}" alt="Pocket Casts Icon">Subscribe (Pocket Casts)</a></p>'
-            html_content += f'<p><small>Direct feed: <a href="{direct_feed_url}">{direct_feed_url}</a></small></p>'
+            html_content += f'<p><a href="{pocketcasts_scheme_url}" class="pocketcasts-link"><img src="{POCKET_CASTS_ICON_URL}" alt="Pocket Casts Icon">Subscribe (Pocket Casts)</a>'
+            html_content += f'<a href="{feed_podcast_scheme_url}" class="subscribe-link"><img src="{RSS_FEED_ICON_URL}" alt="RSS Feed Icon">Subscribe (RSS)</a>'
+            html_content += f'<a href="{generic_podcast_scheme_url}" class="subscribe-link"><img src="{IOS_PODCAST_ICON_URL}" alt="IOS Podcast Icon">Subscribe (IOS)</a></p>'
             html_content += '</div>' 
             html_content += '</div></li>' 
 
@@ -575,6 +396,8 @@ def generate_feeds():
             print(f"\nSUCCESS: HTML index page generated: {html_index_path}")
             print(f"Access HTML index at: {PUBLIC_HTML_OPML_BASE_URL}/") 
             print(f"Access OPML file at: {public_opml_url}")
+            print(f"Ensure CSS file is accessible at: {public_css_url}")
+
 
         except Exception as e:
             print(f"\nERROR: Could not write HTML index page: {e}")
