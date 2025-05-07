@@ -52,7 +52,9 @@ PODCAST_CATEGORY = "Books"
 
 SUPPORTED_AUDIO_EXTENSIONS = ['.mp3', '.m4a', '.ogg', '.aac', '.wav']
 
+
 # --- Helper Functions ---
+# ... (rest of helper functions are the same as before) ...
 def create_safe_filename(name):
     name = re.sub(r'[^\w\s-]', '', name).strip()
     name = re.sub(r'[-\s]+', '-', name)
@@ -121,13 +123,15 @@ def generate_feeds():
         time.sleep(2)
         return
 
-    all_feeds_info = [] # To store info for the HTML index: title, feed_url, image_url
+    all_feeds_info = [] 
 
     if not AUDIOBOOKS_BASE_DIR.is_dir():
         print(f"ERROR: Audiobooks base directory not found or not accessible: {AUDIOBOOKS_BASE_DIR}")
         print(f"       Please check the path and network share permissions if running on Windows.")
         time.sleep(2)
         return
+
+    feed_item_counter = 0 # For unique IDs
 
     for author_dir in AUDIOBOOKS_BASE_DIR.iterdir():
         if not author_dir.is_dir():
@@ -140,6 +144,10 @@ def generate_feeds():
                 continue
             book_title_folder_name = book_dir.name
             print(f"  Processing Book: {book_title_folder_name}")
+            
+            feed_item_counter += 1 # Increment for unique ID
+            current_item_id_base = f"desc-{feed_item_counter}"
+
 
             podcast_title = f"{author_name} - {book_title_folder_name}"
             feed_filename_base = create_safe_filename(podcast_title)
@@ -152,9 +160,7 @@ def generate_feeds():
 
             if cover_image_path.is_file():
                 try:
-                    # relative_image_path_parts is relative to AUDIOBOOKS_BASE_DIR
                     relative_image_path_parts = cover_image_path.relative_to(AUDIOBOOKS_BASE_DIR).parts
-                    # Construct full public URL for images using PUBLIC_AUDIO_FILES_BASE_URL
                     public_cover_image_url_for_feed = f"{PUBLIC_AUDIO_FILES_BASE_URL}/{'/'.join(relative_image_path_parts)}"
                     public_cover_image_url_for_html = public_cover_image_url_for_feed
                 except ValueError:
@@ -164,7 +170,7 @@ def generate_feeds():
                 print(f"    WARNING: Cover image '{COVER_IMAGE_FILENAME}' not found for {book_title_folder_name}. Feed will lack image. HTML will show placeholder if any.")
                 time.sleep(1)
 
-            book_description_text = None
+            book_description_text = None # This will be the full description
             default_book_description = f"An audiobook: {book_title_folder_name} by {author_name}."
 
             audio_files = sorted([
@@ -225,7 +231,7 @@ def generate_feeds():
             channel = ET.SubElement(rss, "channel")
 
             ET.SubElement(channel, "title").text = podcast_title
-            ET.SubElement(channel, "link").text = BASE_DOMAIN_URL # Link to the main site (where index.html is)
+            ET.SubElement(channel, "link").text = BASE_DOMAIN_URL 
             ET.SubElement(channel, "description").text = book_description_text
             ET.SubElement(channel, "language").text = PODCAST_LANGUAGE
             ET.SubElement(channel, "pubDate").text = get_rfc822_date()
@@ -276,9 +282,7 @@ def generate_feeds():
                 ET.SubElement(item, "content:encoded").text = f"<![CDATA[{episode_specific_description}]]>"
 
                 try:
-                    # relative_audio_path_parts is relative to AUDIOBOOKS_BASE_DIR
                     relative_audio_path_parts = audio_file_path_for_episode.relative_to(AUDIOBOOKS_BASE_DIR).parts
-                    # Construct full public URL for audio files using PUBLIC_AUDIO_FILES_BASE_URL
                     public_audio_file_url = f"{PUBLIC_AUDIO_FILES_BASE_URL}/{'/'.join(relative_audio_path_parts)}"
                 except ValueError:
                      print(f"    ERROR: Could not determine relative path for audio file: {audio_file_path_for_episode}")
@@ -302,8 +306,9 @@ def generate_feeds():
                     f.write(pretty_xml_str)
                 print(f"    SUCCESS: Feed generated: {feed_xml_path}")
                 all_feeds_info.append({
+                    "id_base": current_item_id_base, # Store unique id base for this item
                     "title": podcast_title,
-                    "description": book_description_text,
+                    "description": book_description_text, # Full description
                     "feed_url": f"{PUBLIC_FEEDS_BASE_URL}/{feed_xml_filename.replace(os.sep, '/')}",
                     "image_url": public_cover_image_url_for_html
                 })
@@ -326,7 +331,7 @@ def generate_feeds():
                           text=feed_info["title"],
                           title=feed_info["title"],
                           xmlUrl=feed_info["feed_url"],
-                          description=feed_info["description"],)
+                          description=feed_info["description"]) # Added description to OPML outline
         
         opml_path = OUTPUT_WEB_DIR / OPML_FILENAME
         try:
@@ -343,8 +348,27 @@ def generate_feeds():
 
     # --- Generate HTML Index Page ---
     if all_feeds_info:
-        public_opml_url = f"{PUBLIC_HTML_OPML_BASE_URL}/{OPML_FILENAME}" # URL for the OPML file
-        public_css_url = f"{PUBLIC_HTML_OPML_BASE_URL}/{CSS_FILENAME}" # URL for the CSS file
+        public_opml_url = f"{PUBLIC_HTML_OPML_BASE_URL}/{OPML_FILENAME}" 
+        public_css_url = f"{PUBLIC_HTML_OPML_BASE_URL}/{CSS_FILENAME}" 
+
+        # JavaScript for toggle functionality
+        javascript_content = """
+        <script>
+            function toggleDescription(idBase, linkElement) {
+                var descElement = document.getElementById(idBase);
+                var moreText = "Read more";
+                var lessText = "Read less";
+
+                if (descElement.classList.contains('expanded')) {
+                    descElement.classList.remove('expanded');
+                    linkElement.textContent = moreText;
+                } else {
+                    descElement.classList.add('expanded');
+                    linkElement.textContent = lessText;
+                }
+            }
+        </script>
+        """
 
         html_content = f"""<!DOCTYPE html>
         <html lang="en">
@@ -353,6 +377,7 @@ def generate_feeds():
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Audiobook Podcast Feeds</title>
             <link rel="stylesheet" href="{public_css_url}">
+            {javascript_content}
         </head><body>
         <div class="container">
             <h1>Available Audiobook Podcast Feeds</h1>
@@ -362,7 +387,8 @@ def generate_feeds():
             <ul class="feed-list">
         """
 
-        for feed_info in all_feeds_info: # Already sorted
+        for feed_info in all_feeds_info: 
+            item_id_base = feed_info["id_base"] # Get the unique id base for this item
             html_content += '<li class="feed-item">'
             if feed_info['image_url']:
                 html_content += f'<img src="{feed_info["image_url"]}" alt="Cover for {feed_info["title"]}" class="cover-art">'
@@ -371,13 +397,24 @@ def generate_feeds():
             html_content += '<div class="feed-info">'
             
             direct_feed_url = feed_info["feed_url"]
-            feed_description = feed_info.get("description", "No description available.")
+            # Ensure feed_description is HTML-safe if it comes from arbitrary text files/tags
+            # For simplicity, assuming it's plain text. If HTML, proper escaping would be needed.
+            feed_description_html = feed_info.get("description", "No description available.").replace('<', '&lt;').replace('>', '&gt;')
+
             generic_podcast_scheme_url = f"podcast://{direct_feed_url.replace('https://', '').replace('http://', '')}"
             feed_podcast_scheme_url = f"feed://{direct_feed_url.replace('https://', '').replace('http://', '')}"
             pocketcasts_scheme_url = f"pktc://subscribe/{direct_feed_url.replace('https://', '').replace('http://', '')}"
 
             html_content += f'<h2><a href="{direct_feed_url}">{feed_info["title"]}</a></h2>'
-            html_content += f'<span>{feed_description}</span>'
+            # Collapsible description section
+            html_content += '<div class="description-wrapper">'
+            html_content += f'<span class="book-description" id="{item_id_base}">{feed_description_html}</span>'
+            # Check if description is long enough to warrant a "Read more" link
+            # This is a simple check; more sophisticated checks could be based on rendered height
+            if len(feed_description_html) > 200: # Arbitrary length, adjust as needed
+                 html_content += f'<a href="javascript:void(0);" class="read-more-link" onclick="toggleDescription(\'{item_id_base}\', this)">Read more</a>'
+            html_content += '</div>'
+
             html_content += '<div class="links-container">'
             html_content += f'<p><a href="{pocketcasts_scheme_url}" class="pocketcasts-link"><img src="{POCKET_CASTS_ICON_URL}" alt="Pocket Casts Icon">Subscribe (Pocket Casts)</a>'
             html_content += f'<a href="{feed_podcast_scheme_url}" class="subscribe-link"><img src="{RSS_FEED_ICON_URL}" alt="RSS Feed Icon">Subscribe (RSS)</a>'
