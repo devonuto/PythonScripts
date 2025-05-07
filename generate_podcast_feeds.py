@@ -39,12 +39,13 @@ POCKET_CASTS_ICON_URL = "https://upload.wikimedia.org/wikipedia/commons/c/ca/Poc
 RSS_FEED_ICON_URL = "https://upload.wikimedia.org/wikipedia/commons/d/d9/Rss-feed.svg"
 IOS_PODCAST_ICON_URL = "https://upload.wikimedia.org/wikipedia/commons/e/e7/Podcasts_%28iOS%29.svg"
 
+SYDNEY_TIMEZONE = timezone(timedelta(hours=10)) # AEST: UTC+10:00
+
 PUBLIC_AUDIO_FILES_BASE_URL = "https://audiobooks.devo-media.synology.me/audiobooks"
 BASE_DOMAIN_URL = "https://audiobooks.devo-media.synology.me"
 
 PUBLIC_FEEDS_BASE_URL = f"{BASE_DOMAIN_URL}/{FEEDS_SUBDIR}"
 PUBLIC_HTML_OPML_BASE_URL = f"{BASE_DOMAIN_URL}" 
-
 
 PODCAST_LANGUAGE = "en-us"
 PODCAST_EXPLICIT = "no"
@@ -61,32 +62,39 @@ def create_safe_filename(name):
     return name
 
 def get_rfc822_date(dt=None):
+    """Returns a date string in RFC 822 format, standardized to SYDNEY_TIMEZONE (AEST +10:00)."""
+    dt_obj = None 
+    
     if isinstance(dt, str):
         try:
-            if len(dt) == 4 and dt.isdigit():
-                 dt_obj = datetime.strptime(dt, "%Y").replace(tzinfo=timezone.utc)
-            elif len(dt) == 10 and dt.count('-') == 2 :
-                 dt_obj = datetime.strptime(dt, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            else:
+            if len(dt) == 4 and dt.isdigit(): 
+                 dt_obj = datetime.strptime(dt, "%Y")
+            elif len(dt) == 10 and dt.count('-') == 2 : 
+                 dt_obj = datetime.strptime(dt, "%Y-%m-%d")
+            else: 
                 from dateutil import parser
                 dt_obj = parser.parse(dt)
-                if dt_obj.tzinfo is None:
-                    dt_obj = dt_obj.replace(tzinfo=timezone.utc)
         except ImportError:
-            print("    NOTICE: dateutil library not found. Please install it (`pip install python-dateutil` or `pip3 install python-dateutil`) for advanced date parsing from ID3 tags. Falling back to current time for this episode.")
+            print("    NOTICE: dateutil library not found. Please install it (`pip install python-dateutil` or `pip3 install python-dateutil`) for advanced date parsing from ID3 tags. Falling back to current Sydney time for this episode.")
             time.sleep(2)
-            dt_obj = datetime.now(timezone.utc)
+            dt_obj = datetime.now(SYDNEY_TIMEZONE) 
         except ValueError:
-            print(f"    WARNING: Could not parse date string '{dt}' from ID3 tag. Falling back to current time for this episode.")
+            print(f"    WARNING: Could not parse date string '{dt}' from ID3 tag. Falling back to current Sydney time for this episode.")
             time.sleep(2)
-            dt_obj = datetime.now(timezone.utc)
+            dt_obj = datetime.now(SYDNEY_TIMEZONE)
     elif isinstance(dt, datetime):
         dt_obj = dt
-        if dt_obj.tzinfo is None:
-            dt_obj = dt_obj.replace(tzinfo=timezone.utc)
-    else:
-        dt_obj = datetime.now(timezone.utc)
-    return dt_obj.strftime("%a, %d %b %Y %H:%M:%S %z")
+    
+    if dt_obj is None: 
+        dt_obj = datetime.now(SYDNEY_TIMEZONE)
+
+    # Standardize to SYDNEY_TIMEZONE
+    if dt_obj.tzinfo is None: # If naive, assume it's intended as Sydney time and make it aware
+        dt_obj = dt_obj.replace(tzinfo=SYDNEY_TIMEZONE)
+    else: # If aware, convert to Sydney time
+        dt_obj = dt_obj.astimezone(SYDNEY_TIMEZONE)
+        
+    return dt_obj.strftime("%a, %d %b %Y %H:%M:%S %z") # %z will be +1000
 
 def get_file_mime_type(filepath):
     mime_type, _ = mimetypes.guess_type(filepath)
