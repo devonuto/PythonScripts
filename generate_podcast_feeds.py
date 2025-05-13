@@ -19,12 +19,12 @@ import mutagen  # For reading ID3 tags
 current_os = platform.system()
 if current_os == "Linux":
     # Configuration for Synology NAS (Linux-style paths)
-    OUTPUT_WEB_DIR = Path("/volume2/web")  # Root directory for index.html, opml, and feeds subdir
+    OUTPUT_WEB_DIR = Path("/volume2/web/audiobooks")  # Root directory for index.html, opml, and feeds subdir
     AUDIOBOOKS_BASE_DIR = Path(f"{OUTPUT_WEB_DIR}/audiobooks")
 elif current_os == "Windows":
     # Configuration for Windows (UNC paths to NAS share)
     # Replace '\\DEVOMEDIA\web' with the correct UNC path to your NAS's '/volume2/web' directory
-    OUTPUT_WEB_DIR = Path(r"\\DEVOMEDIA\web")  # Root directory for index.html, opml, and feeds subdir
+    OUTPUT_WEB_DIR = Path(r"\\DEVOMEDIA\web\audiobooks")  # Root directory for index.html, opml, and feeds subdir
     AUDIOBOOKS_BASE_DIR = Path(fr"{OUTPUT_WEB_DIR}\audiobooks")  # Use 'r' for raw string to handle backslashes
 else:
     print(f"ERROR: Unsupported Operating System '{current_os}'. Please configure paths manually.")
