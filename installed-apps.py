@@ -1,23 +1,30 @@
-import winreg
 import os
-import datetime
 import csv
+import datetime
+import winreg
+
+# Note: This script requires the WMI package.
+# Install it using: pip install WMI
+try:
+    import wmi
+except ImportError:
+    print("Error: The 'WMI' package is not installed.")
+    print("Please install it by running: pip install WMI")
+    exit()
 
 def get_installed_software():
     """
-    Retrieves a list of installed software by querying the Windows Registry.
+    Retrieves a list of traditionally installed software (Win32) by querying the Windows Registry.
 
     It checks the standard 32-bit and 64-bit Uninstall registry keys for
     both the local machine and the current user.
 
     Returns:
         A list of dictionaries, where each dictionary represents an
-        installed application and contains details like name, version,
-        publisher, and installation path.
+        installed application.
     """
     software_list = []
     # Registry keys to check for installed software information.
-    # This covers 64-bit and 32-bit applications for the local machine and current user.
     registry_paths = [
         (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
         (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
@@ -26,50 +33,64 @@ def get_installed_software():
 
     for hkey, path in registry_paths:
         try:
-            # Open the main registry key
             with winreg.OpenKey(hkey, path) as reg_key:
-                # Enumerate over the subkeys, each representing an installed program
                 for i in range(winreg.QueryInfoKey(reg_key)[0]):
                     try:
                         subkey_name = winreg.EnumKey(reg_key, i)
                         with winreg.OpenKey(reg_key, subkey_name) as sub_key:
                             app_info = {}
                             try:
-                                # Attempt to read the DisplayName value
                                 app_info['DisplayName'] = winreg.QueryValueEx(sub_key, "DisplayName")[0]
                             except OSError:
-                                # If DisplayName is not found, skip this entry as it's likely not a standard application entry.
+                                continue # Skip if no display name
+
+                            # Filter out system components and updates
+                            if winreg.QueryValueEx(sub_key, "SystemComponent")[0] == 1:
+                                continue
+                            if "ParentKeyName" in [winreg.EnumValue(sub_key, j)[0] for j in range(winreg.QueryInfoKey(sub_key)[1])]:
                                 continue
 
-                            # Get other optional details if they exist
-                            try:
-                                app_info['DisplayVersion'] = winreg.QueryValueEx(sub_key, "DisplayVersion")[0]
-                            except OSError:
-                                app_info['DisplayVersion'] = 'N/A'
-                            try:
-                                app_info['Publisher'] = winreg.QueryValueEx(sub_key, "Publisher")[0]
-                            except OSError:
-                                app_info['Publisher'] = 'N/A'
-                            try:
-                                app_info['InstallDate'] = winreg.QueryValueEx(sub_key, "InstallDate")[0]
-                            except OSError:
-                                app_info['InstallDate'] = 'N/A'
-                            try:
-                                app_info['InstallLocation'] = winreg.QueryValueEx(sub_key, "InstallLocation")[0]
-                            except OSError:
-                                app_info['InstallLocation'] = '' # Use empty string if not found
+                            app_info['DisplayVersion'] = winreg.QueryValueEx(sub_key, "DisplayVersion")[0] if "DisplayVersion" in [winreg.EnumValue(sub_key, j)[0] for j in range(winreg.QueryInfoKey(sub_key)[1])] else 'N/A'
+                            app_info['Publisher'] = winreg.QueryValueEx(sub_key, "Publisher")[0] if "Publisher" in [winreg.EnumValue(sub_key, j)[0] for j in range(winreg.QueryInfoKey(sub_key)[1])] else 'N/A'
+                            app_info['InstallDate'] = winreg.QueryValueEx(sub_key, "InstallDate")[0] if "InstallDate" in [winreg.EnumValue(sub_key, j)[0] for j in range(winreg.QueryInfoKey(sub_key)[1])] else 'N/A'
+                            app_info['InstallLocation'] = winreg.QueryValueEx(sub_key, "InstallLocation")[0] if "InstallLocation" in [winreg.EnumValue(sub_key, j)[0] for j in range(winreg.QueryInfoKey(sub_key)[1])] else ''
 
-                            # Avoid adding duplicates by checking the display name
                             if app_info.get('DisplayName') and not any(d.get('DisplayName') == app_info['DisplayName'] for d in software_list):
                                 software_list.append(app_info)
                     except OSError:
-                        # Handle cases where a subkey cannot be opened or read
                         continue
         except FileNotFoundError:
-            # This can happen if a registry path doesn't exist (e.g., on a 32-bit system)
             continue
             
     return software_list
+
+def get_store_apps():
+    """
+    Retrieves a list of installed Microsoft Store apps (UWP) using WMI.
+
+    Returns:
+        A list of dictionaries, where each dictionary represents an
+        installed Store application.
+    """
+    store_apps_list = []
+    try:
+        c = wmi.WMI()
+        # Query for installed Store applications
+        for app in c.Win32_InstalledStoreProgram():
+            app_info = {
+                'DisplayName': app.Name,
+                'DisplayVersion': app.Version if app.Version else 'N/A',
+                'Publisher': app.Vendor if app.Vendor else 'N/A',
+                # Store apps don't have a traditional install date or location
+                'InstallDate': 'N/A',
+                'InstallLocation': '' 
+            }
+            if app_info.get('DisplayName') and not any(d.get('DisplayName') == app_info['DisplayName'] for d in store_apps_list):
+                store_apps_list.append(app_info)
+    except Exception as e:
+        print(f"Could not retrieve Store apps. WMI query failed: {e}")
+    return store_apps_list
+
 
 def get_executable_timestamps(install_location):
     """
@@ -80,7 +101,6 @@ def get_executable_timestamps(install_location):
 
     Returns:
         A tuple containing the last access time, last modification time, and creation time.
-        Returns ('N/A', 'N/A', 'N/A') if the path is invalid or no executable is found.
     """
     if not install_location or not os.path.isdir(install_location):
         return 'N/A', 'N/A', 'N/A'
@@ -89,7 +109,6 @@ def get_executable_timestamps(install_location):
     try:
         for filename in os.listdir(install_location):
             if filename.lower().endswith(".exe"):
-                # Get full path and size of the executable
                 filepath = os.path.join(install_location, filename)
                 try:
                     size = os.path.getsize(filepath)
@@ -102,11 +121,9 @@ def get_executable_timestamps(install_location):
     if not executables:
         return 'N/A', 'N/A', 'N/A'
 
-    # Assume the largest executable is the main application file
     main_executable = max(executables, key=lambda item: item[1])[0]
 
     try:
-        # Get file stats
         stats = os.stat(main_executable)
         last_access_time = datetime.datetime.fromtimestamp(stats.st_atime).strftime('%Y-%m-%d %H:%M:%S')
         last_modified_time = datetime.datetime.fromtimestamp(stats.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
@@ -116,15 +133,17 @@ def get_executable_timestamps(install_location):
         return 'N/A', 'N/A', 'N/A'
 
 if __name__ == "__main__":
+    # Get both lists of applications
     installed_apps = get_installed_software()
+    store_apps = get_store_apps()
     
-    # Sort the list alphabetically by display name
-    installed_apps.sort(key=lambda x: x.get('DisplayName', ''))
+    # Combine the lists
+    all_apps = installed_apps + store_apps
+    
+    # Sort the combined list alphabetically by display name
+    all_apps.sort(key=lambda x: x.get('DisplayName', '').lower())
 
-    # Define the output filename
     output_filename = 'installed_software.csv'
-
-    # Define the header for the CSV file
     header = [
         'Application Name', 
         'Version', 
@@ -135,15 +154,11 @@ if __name__ == "__main__":
     ]
 
     try:
-        # Write the data to a CSV file
         with open(output_filename, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.writer(csvfile)
-            
-            # Write the header row
             writer.writerow(header)
             
-            # Write the data for each application
-            for app in installed_apps:
+            for app in all_apps:
                 access_time, modified_time, _ = get_executable_timestamps(app.get('InstallLocation'))
                 row = [
                     app.get('DisplayName', 'N/A'),
@@ -156,6 +171,7 @@ if __name__ == "__main__":
                 writer.writerow(row)
         
         print(f"Successfully saved the list of installed software to '{output_filename}'")
+        print(f"Found {len(installed_apps)} traditional apps and {len(store_apps)} store apps.")
 
     except IOError:
         print(f"Error: Could not write to file '{output_filename}'. Please check permissions.")

@@ -1,0 +1,11 @@
+certifi==2025.7.14
+charset-normalizer==3.4.2
+idna==3.10
+mutagen==1.47.0
+pyodbc==5.2.0
+python-dateutil==2.9.0.post0
+pywin32==311
+requests==2.32.4
+six==1.17.0
+urllib3==2.5.0
+WMI==1.5.1
