@@ -1,43 +1,15 @@
 import os
-import shutil
 import datetime
 import pathlib
-import time
 import stat # For changing file permissions
 import errno # For error codes like EACCES
+import traceback
 
 # --- Configuration ---
 DEFAULT_DAYS_TO_KEEP = 30  # Items older than this number of days will be deleted.
 
-def _remove_readonly(func, path, excinfo):
-    """
-    Error handler for shutil.rmtree.
-    If a PermissionError (EACCES) occurs, it attempts to change the file's
-    permissions to writable and retries the operation (func is os.remove or os.rmdir).
-    """
-    # excinfo is a sys.exc_info() tuple. excvalue is the exception instance.
-    excvalue = excinfo[1]
-    if func in (os.rmdir, os.remove, os.unlink) and excvalue.errno == errno.EACCES:
-        try:
-            # Ensure the path is a file or link before chmod, as chmod on a dir might not be the issue
-            # or might require different handling. However, os.remove/os.unlink are for files/links.
-            # os.rmdir is for directories, but permission issues for rmdir often relate to it not being empty
-            # or permissions on the directory itself.
-            if os.path.isfile(path) or os.path.islink(path):
-                os.chmod(path, stat.S_IWUSR | stat.S_IWRITE) # Make writable by user
-                func(path) # Retry the operation that failed
-            elif os.path.isdir(path) and func == os.rmdir: # For os.rmdir, try chmod on dir
-                os.chmod(path, stat.S_IWUSR | stat.S_IWRITE | stat.S_IXUSR) # Make writable and executable for user
-                func(path) # Retry
-            else: # Re-raise if it's not a file/link for os.remove/unlink or not a dir for os.rmdir
-                raise
-        except Exception as e:
-            print(f"  - Failed to change permissions or retry {func.__name__} on {path}: {e}")
-            raise # Re-raise the original or new exception
-    else:
-        # Re-raise the exception if it's not a permission error we can handle here
-        raise
-
+# --- Configuration ---
+DEFAULT_DAYS_TO_KEEP = 30  # Items older than this number of days will be deleted.
 
 def clean_downloads_folder(days_to_keep=DEFAULT_DAYS_TO_KEEP):
     """
@@ -99,7 +71,8 @@ def clean_downloads_folder(days_to_keep=DEFAULT_DAYS_TO_KEEP):
                     print(f"Warning: File not found during scan (possibly deleted concurrently): {item_path}")
                 except PermissionError:
                     print(f"Warning: Permission denied while accessing stats for file: {item_path}")
-                except Exception as e:
+                except (OSError, IOError) as e:
+                    # Handle OS-related errors from stat and other filesystem operations
                     print(f"Warning: Could not get stats for file {item_path}: {e}")
 
             # Check directories in the current root
@@ -112,7 +85,7 @@ def clean_downloads_folder(days_to_keep=DEFAULT_DAYS_TO_KEEP):
                     print(f"Warning: Directory not found during scan (possibly deleted concurrently): {item_path}")
                 except PermissionError:
                     print(f"Warning: Permission denied while accessing stats for directory: {item_path}")
-                except Exception as e:
+                except (OSError, IOError) as e:
                     print(f"Warning: Could not get stats for directory {item_path}: {e}")
         
         # Separate into files and folders
@@ -155,11 +128,11 @@ def clean_downloads_folder(days_to_keep=DEFAULT_DAYS_TO_KEEP):
                         os.remove(file_path) # Retry deletion
                         deleted_files_count += 1
                         print(f"    Successfully deleted after changing permissions: {file_path}")
-                    except Exception as e_chmod:
+                    except (OSError, IOError) as e_chmod:
                         print(f"    Failed to delete file {file_path} even after attempting chmod: {e_chmod}")
                 except FileNotFoundError:
-                     print(f"  - File not found (already deleted or moved): {file_path}")
-                except Exception as e:
+                    print(f"  - File not found (already deleted or moved): {file_path}")
+                except (OSError, IOError) as e:
                     print(f"  - Error deleting file {file_path}: {e}")
             print(f"File deletion phase complete. Deleted {deleted_files_count} files.")
         else:
@@ -167,39 +140,39 @@ def clean_downloads_folder(days_to_keep=DEFAULT_DAYS_TO_KEEP):
 
         # 2. Delete Folders
         # These are folders that themselves had a LastWriteTime older than the cutoff.
-        # shutil.rmtree will delete the folder and ALL ITS CONTENTS, even newer items within.
-        # This matches PowerShell's `Remove-Item -Recurse -Force $folder`.
+        # However, we should NOT use shutil.rmtree() as it would delete newer files within old folders.
+        # Instead, we only delete empty directories (after files are deleted, some dirs may become empty).
+        # We'll attempt to remove empty directories by traversing bottom-up.
         deleted_folders_count = 0
-        if old_folders:
-            print(f"\n--- Deleting {len(old_folders)} folders ---")
-            for folder_path in old_folders:
+        
+        # Attempt to delete empty directories throughout the Downloads folder
+        # Walk bottom-up (topdown=False) so we encounter leaf directories first
+        print("--- Removing empty directories ---")
+        for root, dirs, files in os.walk(downloads_path, topdown=False):
+            for dir_name in dirs:
+                folder_path = pathlib.Path(root) / dir_name
                 try:
-                    if folder_path.exists() and folder_path.is_dir(): # Check it's still there and is a directory
-                        print(f"  - Deleting Folder (and all its contents): {folder_path}")
-                        # shutil.rmtree deletes the directory and all its contents.
-                        # The onerror handler attempts to fix permission issues on files/folders within.
-                        shutil.rmtree(folder_path, onerror=_remove_readonly)
-                        deleted_folders_count += 1
+                    if folder_path.exists() and folder_path.is_dir():
+                        # Check if the directory is empty
+                        if not any(folder_path.iterdir()):
+                            print(f"  - Deleting empty folder: {folder_path}")
+                            folder_path.rmdir()
+                            deleted_folders_count += 1
                 except FileNotFoundError:
-                    # This can happen if a parent of this folder was also in old_folders
-                    # and was deleted first (despite sorting, complex structures might exist).
-                    print(f"  - Folder not found (possibly already deleted as part of a parent): {folder_path}")
-                except PermissionError as pe: # Should be caught by onerror, but as a fallback
-                    print(f"  - PermissionError deleting folder {folder_path}: {pe}.")
+                    print(f"  - Folder not found (possibly already deleted): {folder_path}")
                 except OSError as oe:
-                    # OSError can be raised for various reasons, e.g., directory in use.
-                    print(f"  - OSError deleting folder {folder_path}: {oe}")
-                except Exception as e:
-                    print(f"  - Error deleting folder {folder_path}: {e}")
-            print(f"Folder deletion phase complete. Deleted {deleted_folders_count} folders.")
-        else:
-            print("\nNo old folders found to delete.")
+                    # Directory not empty or permission denied
+                    if oe.errno == errno.ENOTEMPTY or oe.errno == errno.EACCES:
+                        print(f"  - Skipping non-empty or inaccessible folder: {folder_path}")
+                    else:
+                        print(f"  - OSError deleting folder {folder_path}: {oe}")
+        
+        print(f"Empty directory removal phase complete. Deleted {deleted_folders_count} empty directories.")
 
         print("\nDeletion process finished.")
 
-    except Exception as e:
-        print(f"An critical error occurred in the script: {e}")
-        import traceback
+    except (OSError, IOError, PermissionError, RuntimeError) as e:
+        print(f"A critical error occurred in the script: {e}")
         print("Traceback:")
         traceback.print_exc() # For debugging unexpected issues
 
