@@ -1,5 +1,7 @@
 import os
 import argparse
+import subprocess
+import shutil
 from plexapi.server import PlexServer
 from mutagen.easyid3 import EasyID3
 from mutagen.flac import FLAC
@@ -9,18 +11,85 @@ from mutagen.easymp4 import EasyMP4
 PLEX_URL = 'http://192.168.1.5:32400'
 PLEX_TOKEN = 'H22FyLAMJ3JzHiGPeZpu'  # Find this in Plex Web > Account > Settings > Authorized Devices
 LIBRARY_NAME = "Steve's Music"
+FFMPEG_PATH = '/usr/local/bin/ffmpeg'
 # =================================================
 
 def get_audio_handler(filepath):
     """Returns the correct Mutagen handler based on file extension."""
     ext = os.path.splitext(filepath)[1].lower()
+    
+    # Helper to pick the class
+    handler_class = None
+    if ext == '.mp3': handler_class = EasyID3
+    elif ext == '.flac': handler_class = FLAC
+    elif ext == '.m4a': handler_class = EasyMP4
+    
+    if not handler_class:
+        return None
+
     try:
-        if ext == '.mp3': return EasyID3(filepath)
-        if ext == '.flac': return FLAC(filepath)
-        if ext == '.m4a': return EasyMP4(filepath)
+        return handler_class(filepath)
     except Exception as e:
+        error_msg = str(e)
+        
+        # Check specifically for the M4A header error
+        if ext == '.m4a' and "unpack requires a buffer of 8 bytes" in error_msg:
+            # Attempt Repair
+            if repair_m4a(filepath):
+                # RETRY: Try to open the file again now that it is fixed
+                try:
+                    return handler_class(filepath)
+                except Exception as retry_e:
+                    print(f"[ERROR] Repaired file still failed to open: {retry_e}")
+                    return None
+            else:
+                # Repair failed, return None so we skip this file
+                return None
+
+        # Print other errors normally
         print(f"[ERROR] Opening {filepath}: {e}")
-    return None
+        return None
+
+def repair_m4a(filepath):
+    """
+    Uses ffmpeg to copy audio streams to a new container to fix malformed headers.
+    Overwrites the original file ONLY if successful.
+    """
+    print(f"[REPAIR] Attempting to fix headers for: {filepath}")
+    
+    # Create a temp filename
+    temp_path = filepath + ".fixed.m4a"
+    
+    # ffmpeg command: 
+    # -i input, -c copy (no encoding), -y (overwrite temp), -v error (quiet)
+    cmd = [FFMPEG_PATH, '-i', filepath, '-c', 'copy', '-y', '-v', 'error', temp_path]
+    
+    try:
+        # Run FFmpeg
+        subprocess.run(cmd, check=True)
+        
+        # Verify temp file exists and has size
+        if os.path.exists(temp_path) and os.path.getsize(temp_path) > 0:
+            # Overwrite the original file with the fixed temp file
+            shutil.move(temp_path, filepath)
+            print(f"   -> Success: File repaired and original replaced.")
+            return True
+        else:
+            print("   -> Failed: Output file was empty.")
+            return False
+            
+    except subprocess.CalledProcessError:
+        print(f"   -> Failed: FFmpeg encountered an error.")
+        # Cleanup temp file if it was created
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        return False
+    except FileNotFoundError:
+        print(f"   -> Failed: 'ffmpeg' command not found. Is it installed?")
+        return False
+    except Exception as e:
+        print(f"   -> Failed: {e}")
+        return False
 
 def sync_track(plex_track, verbose=False, dry_run=False):
     """
