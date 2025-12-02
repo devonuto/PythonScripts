@@ -99,8 +99,8 @@ def main():
 
     if args.verbose:
         print("Fetching all tracks from library...")
-        
-    all_tracks = music_lib.all()
+    
+    all_tracks = music_lib.search(libtype='track') 
     
     if args.verbose:
         print(f"Processing {len(all_tracks)} tracks...")
