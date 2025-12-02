@@ -114,7 +114,7 @@ def sync_track(plex_track, verbose=False, dry_run=False):
             if not audio:
                 continue
 
-            # --- PREPARE DATA ---
+            # — PREPARE DATA —
             # Use originalTitle (Track Artist) if exists, otherwise Album Artist
             p_track_artist = plex_track.originalTitle if plex_track.originalTitle else plex_track.grandparentTitle
             
@@ -131,7 +131,7 @@ def sync_track(plex_track, verbose=False, dry_run=False):
             changes_made = False
             changes_log = []
 
-            # --- COMPARE & APPLY ---
+            # — COMPARE & APPLY —
             for tag_key, desired_val in tags_to_set.items():
                 if desired_val is None: 
                     continue
@@ -146,7 +146,7 @@ def sync_track(plex_track, verbose=False, dry_run=False):
                     changes_made = True
                     changes_log.append(f"{tag_key}: '{current_val}' -> '{val_str}'")
 
-            # --- SAVE ---
+            # — SAVE —
             if changes_made:
                 files_updated_count += 1 # Increment local counter
                 prefix = "[DRY-RUN]" if dry_run else "[UPDATE]"
@@ -200,7 +200,7 @@ def main():
         # Capture the return value (count of files updated for this track)
         total_files_updated += sync_track(track, verbose=args.verbose, dry_run=args.dry_run)
 
-    # --- FINAL REPORT ---
+    # — FINAL REPORT —
     print("-" * 40)
     print("SYNC COMPLETE")
     print("-" * 40)
