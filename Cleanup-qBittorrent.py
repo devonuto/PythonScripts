@@ -155,7 +155,7 @@ class QbittorrentManager:
         self.process_completed_torrents(torrents)
 
 if __name__ == "__main__":
-    host = "https://qbittorrent.devo-media.synology.me/"
+    host = "https://qbittorrent.devonuto.com/"
     port = 443
     username = "devonuto"
     password = "adminadmin"
