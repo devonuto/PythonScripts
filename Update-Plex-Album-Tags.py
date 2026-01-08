@@ -32,8 +32,8 @@ def get_audio_handler(filepath):
     except Exception as e:
         error_msg = str(e)
         
-        # Check specifically for the M4A header error
-        if ext == '.m4a' and "unpack requires a buffer of 8 bytes" in error_msg:
+        # Check specifically for the M4A header error or encoding error
+        if ext == '.m4a' and ("unpack requires a buffer of 8 bytes" in error_msg or "codec can't decode byte" in error_msg):
             # Attempt Repair
             if repair_m4a(filepath):
                 # RETRY: Try to open the file again now that it is fixed
