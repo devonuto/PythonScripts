@@ -166,10 +166,60 @@ def sync_track(plex_track, verbose=False, dry_run=False):
     
     return files_updated_count
 
+def process_one_star_tracks(music_lib, dry_run=False):
+    """
+    Finds and processes 1-star tracks (userRating between 0 and 2.0).
+    Deletes them if dry_run is False.
+    """
+    print("-" * 40)
+    if dry_run:
+        print("SEARCHING FOR 1-STAR TRACKS (DRY-RUN: NO DELETION)")
+    else:
+        print("SEARCHING FOR AND DELETING 1-STAR TRACKS")
+    print("-" * 40)
+    
+    # We want tracks where 0 < userRating <= 2.0
+    print("Fetching all tracks to check ratings...")
+    all_tracks = music_lib.search(libtype='track')
+    
+    found_count = 0
+    deleted_count = 0
+    
+    for track in all_tracks:
+        # Check if userRating exists and is in range
+        if hasattr(track, 'userRating') and track.userRating is not None:
+            rating = float(track.userRating)
+            if 0.0 < rating <= 2.0:
+                found_count += 1
+                prefix = "[DRY-RUN] [DELETE]" if dry_run else "[DELETING]"
+                print(f"{prefix} {rating}/10 - {track.title} - {track.originalTitle or track.grandparentTitle} ({track.parentTitle})")
+                
+                if not dry_run:
+                    try:
+                        track.delete()
+                        print("    -> Successfully deleted from Plex and filesystem.")
+                        deleted_count += 1
+                    except Exception as e:
+                        print(f"    -> [ERROR] Failed to delete: {e}")
+                else:
+                    for media in track.media:
+                        for part in media.parts:
+                            print(f"        File: {part.file}")
+
+    print("-" * 40)
+    if dry_run:
+        print(f"Found {found_count} 1-star tracks that WOULD be deleted.")
+    else:
+        print(f"Found {found_count} 1-star tracks. Successfully deleted {deleted_count}.")
+    print("-" * 40)
+    
+    return found_count
+
 def main():
     parser = argparse.ArgumentParser(description="Sync Plex Metadata to Music File Tags")
     parser.add_argument('-v', '--verbose', action='store_true', help="Print status even when no changes are made.")
     parser.add_argument('--dry-run', action='store_true', help="Show what would be changed without modifying files.")
+    parser.add_argument('--delete-one-star', action='store_true', help="Delete tracks with 1-star rating (0 < rating <= 2.0).")
     args = parser.parse_args()
 
     if args.verbose:
@@ -181,6 +231,12 @@ def main():
     except Exception as e:
         print(f"Failed to connect to Plex: {e}")
         return
+
+    # — 1-STAR CHECK —
+    if args.delete_one_star:
+        process_one_star_tracks(music_lib, dry_run=args.dry_run)
+        # We continue to normal sync as requested ("As well as")
+        print("\nStarting Normal Sync Process...")
 
     if args.verbose:
         print("Fetching all tracks from library...")

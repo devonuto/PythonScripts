@@ -11,6 +11,16 @@
             ]
         },
         {
+            "name": "Debug Delete 1-Star Songs",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/Update-Plex-Album-Tags.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--delete-one-star"
+            ]
+        },
+        {
             "name": "Python: Current File",
             "type": "debugpy",
             "request": "launch",
