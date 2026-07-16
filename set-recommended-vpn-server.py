@@ -90,18 +90,29 @@ def execute_command(command, check=True):
 
 # Function to get the list of configured VPNs on the server
 def get_configured_vpns():
-    command = "grep -E '^conf_name=' /usr/syno/etc/synovpnclient/{l2tp,openvpn,pptp}/*client.conf 2>/dev/null"
     logger.info("Fetching configured VPNs from NAS")
-    config = execute_command(command)
+    vpns = [profile['name'] for profile in parse_openvpn_profiles()]
 
-    config_split = config.split('\n')
+    for directory in ('l2tp', 'openvpn', 'pptp'):
+        dir_path = f"/usr/syno/etc/synovpnclient/{directory}"
+        if not os.path.isdir(dir_path):
+            continue
 
-    vpns = []
-    for line in config_split:
-        match_name = re.match(r"^.*conf_name=(.*)$", line)
-        if match_name:
-            vpn_name = match_name.group(1)
-            vpns.append(vpn_name)
+        for filename in os.listdir(dir_path):
+            if not filename.endswith('client.conf'):
+                continue
+
+            full_path = os.path.join(dir_path, filename)
+            try:
+                with open(full_path, 'r') as file:
+                    for line in file:
+                        if line.startswith('conf_name='):
+                            vpn_name = line.partition('=')[2].strip()
+                            if vpn_name and vpn_name not in vpns:
+                                vpns.append(vpn_name)
+                            break
+            except Exception as e:
+                logger.warning(f"Unable to read VPN config file {full_path}: {e}")
 
     return vpns
 
