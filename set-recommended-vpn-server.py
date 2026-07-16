@@ -133,24 +133,91 @@ def check_external_connectivity(host='1.1.1.1', timeout_seconds=5):
     return True
 
 
-def disconnect_vpn(vpn_name):
-    logger.warning(f"Forcing disconnect for VPN {vpn_name}")
-    disconnect_command = f"/usr/syno/bin/synovpnc disconnect --protocol=openvpn --name={vpn_name}"
-    result = subprocess.run(disconnect_command, shell=True, text=True, capture_output=True)
+def get_current_vpn_connection():
+    connection_status = execute_command("/usr/syno/bin/synovpnc get_conn", check=False)
+    logger.debug(f"Current VPN connection status:\n{connection_status}")
 
+    if not connection_status:
+        return None
+
+    for line in connection_status.splitlines():
+        lowered = line.lower()
+        if 'conf_name=' in lowered:
+            return line.split('=', 1)[1].strip()
+        if 'name=' in lowered:
+            return line.split('=', 1)[1].strip()
+
+    fallback = re.search(r'([a-z0-9_]+_nordvpn_com(?:_(?:udp|tcp|vpn))?)', connection_status, re.IGNORECASE)
+    return fallback.group(1).strip() if fallback else None
+
+
+def disconnect_vpn(vpn_name=None):
+    if vpn_name:
+        logger.warning(f"Forcing disconnect for VPN {vpn_name}")
+        disconnect_command = f"/usr/syno/bin/synovpnc disconnect --protocol=openvpn --name={vpn_name}"
+    else:
+        logger.warning("Forcing disconnect of current VPN connection")
+        disconnect_command = "/usr/syno/bin/synovpnc disconnect --protocol=openvpn"
+
+    result = subprocess.run(disconnect_command, shell=True, text=True, capture_output=True)
     if result.returncode != 0:
-        logger.warning(f"Disconnect command returned non-zero for {vpn_name}: {result.stderr.strip() or result.stdout.strip()}")
+        logger.warning(f"Disconnect command returned non-zero: {result.stderr.strip() or result.stdout.strip()}")
 
     time.sleep(5)
 
 
-def verify_vpn_connection():
-    connection_status = execute_command("/usr/syno/bin/synovpnc get_conn").split('\n')
-    return any("Uptime" in status for status in connection_status)
+def verify_vpn_connection(vpn_name=None):
+    connection_status = execute_command("/usr/syno/bin/synovpnc get_conn", check=False)
+    if vpn_name and vpn_name not in connection_status:
+        logger.warning(f"Expected VPN {vpn_name} not active. Current status:\n{connection_status}")
+        return False
+    return "Uptime" in connection_status
 
 
 # Function to connect to a VPN
 def connect_to_vpn(vpn_name):
+    current_vpn = get_current_vpn_connection()
+    if current_vpn == vpn_name:
+        logger.info(f"VPN {vpn_name} is already active")
+        return
+
+    if current_vpn and current_vpn != vpn_name:
+        logger.info(f"Disconnecting currently active VPN {current_vpn} before connecting to {vpn_name}")
+        disconnect_vpn(current_vpn)
+
+    # Create reconnect command file
+    execute_command(f"(echo conf_name={vpn_name} && echo proto=openvpn) > /usr/syno/etc/synovpnclient/vpnc_connecting")
+
+    # Give root file permissions
+    execute_command("chown devonuto:root /usr/syno/etc/synovpnclient/vpnc_connecting")
+
+    # Call reconnection
+    execute_command(f"/usr/syno/bin/synovpnc reconnect --protocol=openvpn --name={vpn_name} --keepfile")
+
+    time.sleep(10)
+
+    # Verify connection
+    if not verify_vpn_connection(vpn_name):
+        logger.warning(f"VPN {vpn_name} did not become active after first reconnect")
+        disconnect_vpn(vpn_name)
+        execute_command(f"/usr/syno/bin/synovpnc reconnect --protocol=openvpn --name={vpn_name} --keepfile")
+        time.sleep(10)
+
+        if not verify_vpn_connection(vpn_name):
+            msg = f"VPN connection did not recover after reconnect for {vpn_name}"
+            logger.error(msg)
+            sys.exit(1)
+
+    if not check_external_connectivity():
+        logger.warning(f"External connectivity check failed for {vpn_name}; forcing VPN reset")
+        disconnect_vpn(vpn_name)
+        execute_command(f"/usr/syno/bin/synovpnc reconnect --protocol=openvpn --name={vpn_name} --keepfile")
+        time.sleep(10)
+
+        if not verify_vpn_connection(vpn_name) or not check_external_connectivity():
+            msg = f"VPN connection did not recover after reconnect for {vpn_name}"
+            logger.error(msg)
+            sys.exit(1)
     # Create reconnect command file
     execute_command(f"(echo conf_name={vpn_name} && echo proto=openvpn) > /usr/syno/etc/synovpnclient/vpnc_connecting")
 
