@@ -24,8 +24,6 @@ OVPNCLIENT_CONF = SYNO_OPENVPN_DIR + '/ovpnclient.conf'
 
 def load_local_config():
     settings = {
-        'username': None,
-        'password': None,
         'max_profiles': None,
         'sync_profiles': False,  # profile add/remove stays off until local.config exists
         'dry_run': False,
@@ -37,14 +35,6 @@ def load_local_config():
 
     parser = configparser.ConfigParser()
     parser.read(LOCAL_CONFIG_PATH)
-
-    username = parser.get('nordvpn', 'username', fallback='').strip()
-    password = parser.get('nordvpn', 'password', fallback='').strip()
-    # Ignore the placeholder values from local.config.example
-    if username and not username.startswith('your-'):
-        settings['username'] = username
-    if password and not password.startswith('your-'):
-        settings['password'] = password
 
     max_profiles = parser.get('settings', 'max_profiles', fallback='').strip()
     if max_profiles.isdigit() and int(max_profiles) > 0:
@@ -270,7 +260,7 @@ def generate_conf_id(existing_ids):
     return f'o{conf_id}'
 
 
-def clone_profile(template, server, config, existing_ids, dry_run):
+def clone_profile(template, server, existing_ids, dry_run):
     new_name = server['name']
     # Prefer the station IP (no DNS dependency at connect time, matches
     # NordVPN's own .ovpn files); fall back to the hostname
@@ -311,14 +301,12 @@ def clone_profile(template, server, config, existing_ids, dry_run):
     with open(client_path, 'w') as file:
         file.write(client_config)
 
-    # Build the new ovpnclient.conf section from the template's
+    # Build the new ovpnclient.conf section from the template's. user/pass are
+    # inherited verbatim: DSM stores pass= obfuscated, so writing plaintext
+    # service credentials there fails auth (AUTH_FAILED).
     new_section = template['section'].replace(f"[{template['id']}]", f"[{new_id}]")
     new_section = re.sub(r'(?m)^conf_name=.*$', f'conf_name={new_name}', new_section)
     new_section = re.sub(r'(?m)^remote=.*$', f'remote={remote_host}', new_section)
-    if config['username']:
-        new_section = re.sub(r'(?m)^user=.*$', lambda _: f"user={config['username']}", new_section)
-    if config['password']:
-        new_section = re.sub(r'(?m)^pass=.*$', lambda _: f"pass={config['password']}", new_section)
     if not new_section.endswith('\n'):
         new_section += '\n'
 
@@ -423,7 +411,7 @@ def sync_vpn_profiles(recommended_servers, config):
     template = nord_profiles[0]
     existing_ids = {profile['id'] for profile in profiles}
     for entry in missing:
-        clone_profile(template, entry, config, existing_ids, dry_run)
+        clone_profile(template, entry, existing_ids, dry_run)
 
     return to_remove
 

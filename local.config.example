@@ -1,14 +1,6 @@
 # Copy this file to "local.config" in the same folder and fill in your values.
 # local.config is git-ignored -- never commit real credentials.
 
-[nordvpn]
-# OPTIONAL: NordVPN *service* credentials (NOT your NordVPN account login).
-# Find them at: https://my.nordaccount.com -> NordVPN -> Manual setup -> Service credentials
-# If left blank, new profiles reuse the username/password stored in the
-# existing profile they are cloned from (usually what you want).
-username =
-password =
-
 [settings]
 # Maximum number of NordVPN profiles to keep configured on the NAS.
 # Leave blank to keep however many are currently configured.
