@@ -1,3 +1,59 @@
+# ==============================================================================
+# NordVPN recommended-server switcher for Synology DSM
+# ==============================================================================
+# Connects the NAS to NordVPN's currently recommended server, and keeps a pool
+# of OpenVPN profiles synced to the most-frequently-recommended servers by
+# cloning an existing, working profile.
+#
+# SETTING THIS UP ON A NEW MACHINE (Synology NAS, DSM 7):
+#
+# 1. Import ONE working NordVPN OpenVPN profile through the DSM UI first.
+#    This is the non-negotiable prerequisite: the script cannot create a
+#    profile from scratch. It clones this "template" profile, inheriting its
+#    CA certificate and -- critically -- its user=/pass= entries verbatim.
+#    DSM stores pass= in an obfuscated form that only the DSM UI can write,
+#    so there is no way to supply credentials via this script or config file.
+#      a. Get your NordVPN *service credentials* (NOT your account login):
+#         https://my.nordaccount.com -> NordVPN -> Manual setup -> Service credentials
+#      b. Download a UDP .ovpn file for any server from NordVPN's site.
+#      c. DSM: Control Panel -> Network -> Network Interface -> Create ->
+#         Create VPN profile -> OpenVPN (via importing a .ovpn file), enter
+#         the service credentials from (a).
+#      d. Test-connect it once from the DSM UI so you know it works.
+#    The profile name must contain "nordvpn" (it will if imported from a
+#    standard .ovpn, e.g. au731_nordvpn_com_udp).
+#
+# 2. Put this folder on a NAS share, e.g. /volume2/Media/Python Scripts.
+#    Required alongside this script: logger_config.py, local.config
+#    (copy local.config.example and review it; keep dry_run=true for the
+#    first run or two). vpn-recommended-servers.json builds up over time --
+#    without it, only today's #1 recommendation is used for profile sync.
+#
+# 3. Make sure python3 with the "requests" package is available on the NAS
+#    (e.g. install Python from Package Center, then:  python3 -m pip install requests).
+#
+# 4. Schedule it as root: DSM Control Panel -> Task Scheduler -> Create ->
+#    Scheduled Task -> User-defined script, user "root", every ~2 hours:
+#      cd "/volume2/Media/Python Scripts" && python3 set-recommended-vpn-server.py
+#    Root is required: the script writes /usr/syno/etc/synovpnclient/* and
+#    calls /usr/syno/bin/synovpnc.
+#
+# IF NORDVPN SERVICE CREDENTIALS ARE EVER REGENERATED: every profile breaks
+# at once (AUTH_FAILED). Fix by re-doing step 1 (re-import/edit one profile
+# in the DSM UI with the new credentials); clones inherit from it on the
+# next sync.
+#
+# DEBUGGING NOTES (hard-won):
+# - OpenVPN output does NOT go to /var/log/messages; each profile logs to
+#   /var/log/<server>_NordVPN.log (the log-append line in its client_ file).
+#   synovpnc itself only logs "CreateOVPNConnection(...) failed" to messages.
+# - synovpnc has no "disconnect" command; teardown is "kill_client".
+# - Dialing requires /usr/syno/etc/synovpnclient/vpnc_connecting to contain
+#   conf_id=/conf_name=/proto= before calling "synovpnc reconnect".
+# - Cloned configs must have verify-x509-name rewritten to the new server's
+#   hostname or TLS fails with VERIFY X509NAME ERROR.
+# ==============================================================================
+
 import requests
 import subprocess
 import re
