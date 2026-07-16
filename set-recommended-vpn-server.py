@@ -303,12 +303,18 @@ def clone_profile(template, server, config, existing_ids, dry_run):
         client_config = file.read()
     client_config = client_config.replace(template['id'], new_id)
     client_config = re.sub(r'(?m)^(remote\s+)\S+(.*)$', rf'\g<1>{remote_host}\g<2>', client_config)
+    # The template pins its own hostname for certificate verification; without
+    # this rewrite every clone fails TLS with VERIFY X509NAME ERROR.
+    client_config = re.sub(r'(?m)^(verify-x509-name\s+CN=)\S+$', rf'\g<1>{server["hostname"]}', client_config)
+    server_short_name = server['hostname'].split('.')[0]
+    client_config = re.sub(r'(?m)^(log-append\s+/var/log/)\S+$', rf'\g<1>{server_short_name}_NordVPN.log', client_config)
     with open(client_path, 'w') as file:
         file.write(client_config)
 
     # Build the new ovpnclient.conf section from the template's
     new_section = template['section'].replace(f"[{template['id']}]", f"[{new_id}]")
     new_section = re.sub(r'(?m)^conf_name=.*$', f'conf_name={new_name}', new_section)
+    new_section = re.sub(r'(?m)^remote=.*$', f'remote={remote_host}', new_section)
     if config['username']:
         new_section = re.sub(r'(?m)^user=.*$', lambda _: f"user={config['username']}", new_section)
     if config['password']:
