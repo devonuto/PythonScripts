@@ -152,18 +152,23 @@ def get_current_vpn_connection():
 
 
 def disconnect_vpn(vpn_name=None):
+    commands = []
     if vpn_name:
         logger.warning(f"Forcing disconnect for VPN {vpn_name}")
-        disconnect_command = f"/usr/syno/bin/synovpnc disconnect --protocol=openvpn --name={vpn_name}"
+        commands.append(f"/usr/syno/bin/synovpnc disconnect --protocol=openvpn --name={vpn_name}")
     else:
         logger.warning("Forcing disconnect of current VPN connection")
-        disconnect_command = "/usr/syno/bin/synovpnc disconnect --protocol=openvpn"
+    commands.append("/usr/syno/bin/synovpnc disconnect --protocol=openvpn")
 
-    result = subprocess.run(disconnect_command, shell=True, text=True, capture_output=True)
-    if result.returncode != 0:
-        logger.warning(f"Disconnect command returned non-zero: {result.stderr.strip() or result.stdout.strip()}")
+    for disconnect_command in commands:
+        result = subprocess.run(disconnect_command, shell=True, text=True, capture_output=True)
+        if result.returncode == 0:
+            logger.debug(f"Disconnected VPN with command: {disconnect_command}")
+            break
+        logger.warning(f"Disconnect command failed: {disconnect_command}; {result.stderr.strip() or result.stdout.strip()}")
 
-    time.sleep(5)
+    # Give the system a moment to tear down the interface.
+    time.sleep(8)
 
 
 def verify_vpn_connection(vpn_name=None):
@@ -191,17 +196,17 @@ def connect_to_vpn(vpn_name):
     # Give root file permissions
     execute_command("chown devonuto:root /usr/syno/etc/synovpnclient/vpnc_connecting")
 
-    # Call reconnection
-    execute_command(f"/usr/syno/bin/synovpnc reconnect --protocol=openvpn --name={vpn_name} --keepfile")
+    # Call connect
+    execute_command(f"/usr/syno/bin/synovpnc connect --protocol=openvpn --name={vpn_name} --keepfile")
 
-    time.sleep(10)
+    time.sleep(12)
 
     # Verify connection
     if not verify_vpn_connection(vpn_name):
-        logger.warning(f"VPN {vpn_name} did not become active after first reconnect")
+        logger.warning(f"VPN {vpn_name} did not become active after first connect")
         disconnect_vpn(vpn_name)
-        execute_command(f"/usr/syno/bin/synovpnc reconnect --protocol=openvpn --name={vpn_name} --keepfile")
-        time.sleep(10)
+        execute_command(f"/usr/syno/bin/synovpnc connect --protocol=openvpn --name={vpn_name} --keepfile")
+        time.sleep(12)
 
         if not verify_vpn_connection(vpn_name):
             msg = f"VPN connection did not recover after reconnect for {vpn_name}"
@@ -211,8 +216,8 @@ def connect_to_vpn(vpn_name):
     if not check_external_connectivity():
         logger.warning(f"External connectivity check failed for {vpn_name}; forcing VPN reset")
         disconnect_vpn(vpn_name)
-        execute_command(f"/usr/syno/bin/synovpnc reconnect --protocol=openvpn --name={vpn_name} --keepfile")
-        time.sleep(10)
+        execute_command(f"/usr/syno/bin/synovpnc connect --protocol=openvpn --name={vpn_name} --keepfile")
+        time.sleep(12)
 
         if not verify_vpn_connection(vpn_name) or not check_external_connectivity():
             msg = f"VPN connection did not recover after reconnect for {vpn_name}"
