@@ -152,20 +152,16 @@ def get_current_vpn_connection():
 
 
 def disconnect_vpn(vpn_name=None):
-    commands = []
     if vpn_name:
         logger.warning(f"Forcing disconnect for VPN {vpn_name}")
-        commands.append(f"/usr/syno/bin/synovpnc disconnect --protocol=openvpn --name={vpn_name}")
     else:
         logger.warning("Forcing disconnect of current VPN connection")
-    commands.append("/usr/syno/bin/synovpnc disconnect --protocol=openvpn")
 
-    for disconnect_command in commands:
-        result = subprocess.run(disconnect_command, shell=True, text=True, capture_output=True)
-        if result.returncode == 0:
-            logger.debug(f"Disconnected VPN with command: {disconnect_command}")
-            break
-        logger.warning(f"Disconnect command failed: {disconnect_command}; {result.stderr.strip() or result.stdout.strip()}")
+    # synovpnc has no "disconnect" subcommand; kill_client tears down the
+    # currently active connection regardless of profile.
+    result = subprocess.run("/usr/syno/bin/synovpnc kill_client", shell=True, text=True, capture_output=True)
+    if result.returncode != 0:
+        logger.warning(f"kill_client failed: {result.stderr.strip() or result.stdout.strip()}")
 
     # Give the system a moment to tear down the interface.
     time.sleep(8)
@@ -179,6 +175,25 @@ def verify_vpn_connection(vpn_name=None):
     return "Uptime" in connection_status
 
 
+def get_openvpn_profile_id(vpn_name):
+    for profile in parse_openvpn_profiles():
+        if profile['name'] == vpn_name:
+            return profile['id']
+    return None
+
+
+def dial_vpn(vpn_name, profile_id):
+    # Reconnect resolves the profile via conf_id in vpnc_connecting; conf_name
+    # alone is not enough for it to find the client_<id> config to dial.
+    execute_command(
+        f"(echo conf_id={profile_id} && echo conf_name={vpn_name} && echo proto=openvpn)"
+        " > /usr/syno/etc/synovpnclient/vpnc_connecting"
+    )
+    execute_command("chown devonuto:root /usr/syno/etc/synovpnclient/vpnc_connecting")
+    execute_command(f"/usr/syno/bin/synovpnc reconnect --protocol=openvpn --name={vpn_name} --keepfile")
+    time.sleep(12)
+
+
 # Function to connect to a VPN
 def connect_to_vpn(vpn_name):
     current_vpn = get_current_vpn_connection()
@@ -186,27 +201,22 @@ def connect_to_vpn(vpn_name):
         logger.info(f"VPN {vpn_name} is already active")
         return
 
+    profile_id = get_openvpn_profile_id(vpn_name)
+    if not profile_id:
+        logger.error(f"No OpenVPN profile id found for {vpn_name} in {OVPNCLIENT_CONF}")
+        sys.exit(1)
+
     if current_vpn and current_vpn != vpn_name:
         logger.info(f"Disconnecting currently active VPN {current_vpn} before connecting to {vpn_name}")
         disconnect_vpn(current_vpn)
 
-    # Create reconnect command file
-    execute_command(f"(echo conf_name={vpn_name} && echo proto=openvpn) > /usr/syno/etc/synovpnclient/vpnc_connecting")
-
-    # Give root file permissions
-    execute_command("chown devonuto:root /usr/syno/etc/synovpnclient/vpnc_connecting")
-
-    # Call reconnect using the VPN name
-    execute_command(f"/usr/syno/bin/synovpnc reconnect --protocol=openvpn --name={vpn_name} --keepfile")
-
-    time.sleep(12)
+    dial_vpn(vpn_name, profile_id)
 
     # Verify connection
     if not verify_vpn_connection(vpn_name):
         logger.warning(f"VPN {vpn_name} did not become active after first reconnect")
         disconnect_vpn(vpn_name)
-        execute_command(f"/usr/syno/bin/synovpnc reconnect --protocol=openvpn --name={vpn_name} --keepfile")
-        time.sleep(12)
+        dial_vpn(vpn_name, profile_id)
 
         if not verify_vpn_connection(vpn_name):
             msg = f"VPN connection did not recover after reconnect for {vpn_name}"
@@ -216,8 +226,7 @@ def connect_to_vpn(vpn_name):
     if not check_external_connectivity():
         logger.warning(f"External connectivity check failed for {vpn_name}; forcing VPN reset")
         disconnect_vpn(vpn_name)
-        execute_command(f"/usr/syno/bin/synovpnc reconnect --protocol=openvpn --name={vpn_name} --keepfile")
-        time.sleep(12)
+        dial_vpn(vpn_name, profile_id)
 
         if not verify_vpn_connection(vpn_name) or not check_external_connectivity():
             msg = f"VPN connection did not recover after reconnect for {vpn_name}"
