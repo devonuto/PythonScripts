@@ -166,6 +166,9 @@ cython_debug/
 # Visual Studio
 .vs/
 
+# Local secrets / machine-specific settings
+local.config
+
 # JSON files
 *.json
 
